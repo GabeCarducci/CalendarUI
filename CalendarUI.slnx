@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="CalendarUI/calendarui.esproj">
+    <Build />
+    <Deploy />
+  </Project>
+</Solution>
