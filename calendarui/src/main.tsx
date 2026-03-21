@@ -7,12 +7,12 @@ import './index.css'
 
 createRoot(document.getElementById('root')!).render(
     <StrictMode>
-        <Auth0ProviderWithConfig>
-            <BrowserRouter>
+        <BrowserRouter>
+            <Auth0ProviderWithConfig>
                 <Routes>
                     <Route path="/*" element={<App />} />
                 </Routes>
-            </BrowserRouter>
-        </Auth0ProviderWithConfig>
+            </Auth0ProviderWithConfig>
+        </BrowserRouter>
     </StrictMode>,
 );
