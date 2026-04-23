@@ -1,5 +1,6 @@
 import './App.css'
-import Header from './compnents/header'
+import Calendar from './components/calendar'
+import Header from './components/header'
 import { useAuth0 } from '@auth0/auth0-react';
 
 const App: React.FC = () => {
@@ -16,6 +17,7 @@ const App: React.FC = () => {
           {!isLoading && isAuthenticated && (
               <main style={{ padding: '2rem' }}>
                   <h1>Logged In!</h1>
+                  <Calendar />
               </main>
           )}          
     </>

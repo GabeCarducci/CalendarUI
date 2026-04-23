@@ -12,7 +12,6 @@ const HEADER_HEIGHT = 64;
  */
 export default function Header({ title = 'Carducci' }: HeaderProps) {
     const { loginWithRedirect, logout, isAuthenticated, isLoading } = useAuth0();
-
     return (
         <header style={styles.header}>
             <div style={styles.container}>

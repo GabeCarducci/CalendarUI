@@ -8,7 +8,7 @@ export default function Auth0ProviderWithConfig({ children }: { children: React.
     const navigate = useNavigate();
 
     const onRedirectCallback = (appState?: { returnTo?: string }) => {
-        const returnTo = appState?.returnTo || window.location.pathname;
+        const returnTo = appState?.returnTo || window.location.href;
         navigate(returnTo, { replace: true });
     };
 
@@ -22,7 +22,9 @@ export default function Auth0ProviderWithConfig({ children }: { children: React.
             domain={domain}
             clientId={clientId}
             authorizationParams={{
-                redirect_uri: window.location.origin
+                redirect_uri: window.location.origin,
+                scope: "openid profile email https://www.googleapis.com/auth/calendar",
+                audience: import.meta.env.VITE_AUTH0_AUDIENCE,
             }}
             onRedirectCallback={onRedirectCallback}
         >
