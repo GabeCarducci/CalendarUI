@@ -52,6 +52,7 @@ app.post('/api/calendar/event', checkJwt, async (req, res) => {
             title: req.body.title,
             startTime: new Date(req.body.start),
             endTime: new Date(req.body.end),
+            description: req.body.description,
         },
     });
     res.json(event);
@@ -101,6 +102,19 @@ app.post('/api/calendar/import-google', checkJwt, async (req, res) => {
     }
 
     res.json({ imported });
+});
+
+app.patch('/api/calendar/event/:id', checkJwt, async (req, res) => {
+    const event = await prisma.event.update({
+        where: { id: req.params.id as string, userId: req.auth!.payload.sub! },
+        data: {
+            title: req.body.title,
+            startTime: new Date(req.body.start),
+            endTime: new Date(req.body.end),
+            description: req.body.description,
+        },
+    });
+    res.json(event);
 });
 
 app.listen(3001, () => console.log('API running on :3001'));

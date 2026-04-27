@@ -5,12 +5,12 @@ interface HeaderProps {
     title?: string;
 }
 
-const HEADER_HEIGHT = 64;
+const HEADER_HEIGHT = 48;
 
 /**
  * Header variant: gradient from black to grey with a 3D effect using layered shadows and an inset highlight.
  */
-export default function Header({ title = 'Carducci' }: HeaderProps) {
+export default function Header({ title = 'Community Calendar' }: HeaderProps) {
     const { loginWithRedirect, logout, isAuthenticated, isLoading } = useAuth0();
     return (
         <header style={styles.header}>

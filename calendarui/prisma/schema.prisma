@@ -7,11 +7,12 @@ datasource db {
 }
 
 model Event {
-  id        String   @id @default(uuid())
-  userId    String
-  title     String
-  startTime DateTime
-  endTime   DateTime
-  googleId  String?  @unique
-  createdAt DateTime @default(now())
+  id          String   @id @default(uuid())
+  userId      String
+  title       String
+  startTime   DateTime
+  endTime     DateTime
+  description String?  
+  googleId    String?  @unique
+  createdAt   DateTime @default(now())
 }

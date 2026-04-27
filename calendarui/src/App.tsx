@@ -8,7 +8,8 @@ const App: React.FC = () => {
     const { isAuthenticated, isLoading } = useAuth0();
   return (
       <>
-        <Header />
+          <Header />
+        <div className="belowHeader">
           {!isLoading && !isAuthenticated && (
               <main style={{ padding: '2rem' }}>
                   <h1>Welcome to the Landing Page</h1>
@@ -16,11 +17,11 @@ const App: React.FC = () => {
           )}
           {!isLoading && isAuthenticated && (
               <main style={{ padding: '2rem' }}>
-                  <h1>Logged In!</h1>
                   <Calendar />
               </main>
           )}          
-    </>
+          </div>
+      </>
   )
 }
 

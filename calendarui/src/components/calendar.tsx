@@ -3,13 +3,26 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import { useEffect, useState, useCallback } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
+import Sidebar from './sidebar';
+
+type EventForm = {
+    title: string;
+    date: string;
+    start: string;
+    end: string;
+    description: string;
+};
 
 export default function Calendar() {
     const { getAccessTokenSilently, user } = useAuth0();
     const [events, setEvents] = useState([]);
     const [importing, setImporting] = useState(false);
+    const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [editingEvent, setEditingEvent] = useState<any>(null);
+    const [form, setForm] = useState<EventForm>({
+        title: '', date: '', start: '10:00', end: '11:00', description: ''
+    });
 
-    // Show import button only for Google users
     const isGoogleUser = user?.sub?.startsWith('google-oauth2|');
 
     const fetchEvents = useCallback(async () => {
@@ -20,33 +33,78 @@ export default function Calendar() {
         const data = await res.json();
         setEvents(data.map((e: any) => ({
             id: e.id,
-            title: e.title,           
-            start: e.startTime,       
+            title: e.title,
+            start: e.startTime,
             end: e.endTime,
+            extendedProps: { description: e.description }
         })));
     }, [getAccessTokenSilently]);
 
-    useEffect(() => {
-        fetchEvents();
-    }, [fetchEvents]);
+    useEffect(() => { fetchEvents(); }, [fetchEvents]);
 
-    async function handleDateClick({ dateStr }: { dateStr: string }) {
-        const title = prompt('Event title:');
-        if (!title) return;
+    function handleDateClick({ dateStr }: { dateStr: string }) {
+        setEditingEvent(null);
+        setForm({ title: '', date: dateStr, start: '10:00', end: '11:00', description: '' });
+        setSidebarOpen(true);
+    }
 
-        const token = await getAccessTokenSilently();
-        await fetch('/api/calendar/event', {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${token}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                title,
-                start: `${dateStr}T10:00:00`,
-                end: `${dateStr}T11:00:00`,
-            }),
+    function handleEventClick({ event }: { event: any }) {
+        setEditingEvent(event);
+        setForm({
+            title: event.title,
+            date: event.startStr.split('T')[0],
+            start: event.startStr.split('T')[1]?.slice(0, 5) || '10:00',
+            end: event.endStr.split('T')[1]?.slice(0, 5) || '11:00',
+            description: event.extendedProps.description || ''
         });
+        setSidebarOpen(true);
+    }
+
+    async function handleSave() {
+        const token = await getAccessTokenSilently();
+
+        if (editingEvent) {
+            await fetch(`/api/calendar/event/${editingEvent.id}`, {
+                method: 'PATCH',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    title: form.title,
+                    start: `${form.date}T${form.start}:00`,
+                    end: `${form.date}T${form.end}:00`,
+                    description: form.description,
+                }),
+            });
+        } else {
+            await fetch('/api/calendar/event', {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    title: form.title,
+                    start: `${form.date}T${form.start}:00`,
+                    end: `${form.date}T${form.end}:00`,
+                    description: form.description,
+                }),
+            });
+        }
+
+        setSidebarOpen(false);
+        fetchEvents();
+    }
+
+    async function handleDelete() {
+        if (!editingEvent) return;
+        const token = await getAccessTokenSilently();
+        await fetch(`/api/calendar/event/${editingEvent.id}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        setSidebarOpen(false);
         fetchEvents();
     }
 
@@ -58,23 +116,38 @@ export default function Calendar() {
             headers: { Authorization: `Bearer ${token}` }
         });
         const data = await res.json();
-        alert(`Imported ${data.imported} events from Google Calendar`);
+        alert(`Imported ${data.imported} events`);
         setImporting(false);
-        fetchEvents(); // refresh to show imported events
+        fetchEvents();
     }
 
     return (
-        <div>
-            {isGoogleUser && (
-                <button onClick={handleImportGoogle} disabled={importing}>
-                    {importing ? 'Importing...' : 'Import from Google Calendar'}
-                </button>
-            )}
-            <FullCalendar
-                plugins={[dayGridPlugin, interactionPlugin]}
-                initialView="dayGridMonth"
-                events={events}
-                dateClick={handleDateClick}
+        <div style={{ position: 'relative' }}>
+            <div>
+            
+                {/*{isGoogleUser && (*/}
+                {/*    <button onClick={handleImportGoogle} disabled={importing}>*/}
+                {/*        {importing ? 'Importing...' : 'Import from Google Calendar'}*/}
+                {/*    </button>*/}
+                {/*)}*/}
+                
+                <FullCalendar
+                    plugins={[dayGridPlugin, interactionPlugin]}
+                    initialView="dayGridMonth"
+                    events={events}
+                    dateClick={handleDateClick}
+                    eventClick={handleEventClick}
+                />
+            </div>
+
+            <Sidebar
+                isOpen={sidebarOpen}
+                editingEvent={editingEvent}
+                form={form}
+                setForm={setForm}
+                onSave={handleSave}
+                onDelete={handleDelete}
+                onClose={() => setSidebarOpen(false)}
             />
         </div>
     );
