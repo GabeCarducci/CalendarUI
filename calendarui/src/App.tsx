@@ -12,7 +12,8 @@ const App: React.FC = () => {
         <div className="belowHeader">
           {!isLoading && !isAuthenticated && (
               <main style={{ padding: '2rem' }}>
-                  <h1>Welcome to the Landing Page</h1>
+                      <h1>Welcome to the Landing Page</h1>
+                      <p>Please log in to access your calendar.</p>
               </main>
           )}
           {!isLoading && isAuthenticated && (

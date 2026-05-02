@@ -1,5 +1,6 @@
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
+import timeGridPlugin from '@fullcalendar/timegrid'
 import interactionPlugin from '@fullcalendar/interaction';
 import { useEffect, useState, useCallback } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
@@ -61,6 +62,14 @@ export default function Calendar() {
     }
 
     async function handleSave() {
+
+        const startTime = new Date(`${form.date}T${form.start}:00`);
+        const endTime = new Date(`${form.date}T${form.end}:00`);
+
+        if (endTime <= startTime) {
+            alert('End time must be after start time');
+            return;
+        }
         const token = await getAccessTokenSilently();
 
         if (editingEvent) {
@@ -132,11 +141,16 @@ export default function Calendar() {
                 {/*)}*/}
                 
                 <FullCalendar
-                    plugins={[dayGridPlugin, interactionPlugin]}
+                    plugins={[dayGridPlugin, interactionPlugin, timeGridPlugin]}
                     initialView="dayGridMonth"
                     events={events}
                     dateClick={handleDateClick}
                     eventClick={handleEventClick}
+                    headerToolbar={{
+                        right: 'prev,next today',
+                        center: 'title',
+                        left: 'dayGridYear,dayGridMonth,timeGridWeek,timeGridDay'
+                    }}
                 />
             </div>
 
