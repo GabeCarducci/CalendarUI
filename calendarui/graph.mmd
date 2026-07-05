@@ -1,0 +1,73 @@
+graph TB
+    subgraph Frontend["Frontend (React + Vite)"]
+        Main["main.tsx<br/>(Entry Point)"]
+        BRouter["BrowserRouter"]
+        Auth0Provider["Auth0ProviderWithConfig"]
+        App["App.tsx"]
+        
+        subgraph Components["Components"]
+            Header["Header"]
+            Calendar["Calendar"]
+            Sidebar["Sidebar"]
+        end
+        
+        Main --> BRouter
+        BRouter --> Auth0Provider
+        Auth0Provider --> App
+        App --> Header
+        App --> Calendar
+        Calendar --> Sidebar
+    end
+    
+    subgraph Auth["Authentication"]
+        Auth0Config["Auth0ProviderWithConfig.tsx"]
+        Auth0JS["@auth0/auth0-react"]
+        Auth0SDK["auth0-spa-js"]
+    end
+    
+    subgraph Backend["Backend (Express + Node.js)"]
+        Server["server.ts<br/>(Port 3001)"]
+        
+        subgraph Routes["API Routes"]
+            GetEvents["GET /api/calendar/events"]
+            PostEvent["POST /api/calendar/event"]
+            DeleteEvent["DELETE /api/calendar/event/:id"]
+            ImportGoogle["POST /api/calendar/import-google"]
+        end
+        
+        Server --> Routes
+    end
+    
+    subgraph Database["Database Layer"]
+        Prisma["PrismaClient"]
+        Schema["schema.prisma<br/>(PostgreSQL)"]
+        
+        subgraph Models["Data Models"]
+            EventModel["Event Model<br/>(id, userId, title,<br/>startTime, endTime,<br/>googleId)"]
+        end
+        
+        Prisma --> Schema
+        Schema --> Models
+    end
+    
+    subgraph ExternalServices["External Services"]
+        Google["Google Calendar API"]
+        Auth0Mgmt["Auth0 Management API"]
+    end
+    
+    subgraph UI["UI Libraries"]
+        FullCalendar["FullCalendar<br/>(React Plugin)"]
+        DayGrid["daygrid Plugin"]
+        TimeGrid["timegrid Plugin"]
+        Interaction["interaction Plugin"]
+    end
+    
+    Calendar --> FullCalendar
+    FullCalendar --> DayGrid
+    FullCalendar --> TimeGrid
+    FullCalendar --> Interaction
+    
+    Frontend -->|Fetch Events| Server
+    Frontend -->|Create/Update/Delete| Server
+    Frontend -->|Auth Token| Auth0Provider
+    Auth0Provider --> Auth0JS

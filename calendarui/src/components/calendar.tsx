@@ -28,9 +28,14 @@ export default function Calendar() {
 
     const fetchEvents = useCallback(async () => {
         const token = await getAccessTokenSilently();
+        localStorage.setItem("token", token);
         const res = await fetch('/api/calendar/events', {
             headers: { Authorization: `Bearer ${token}` }
         });
+        if (!res.ok) {
+            console.error(`Failed to fetch events: ${res.status} ${res.statusText}`);
+            return;
+        }
         const data = await res.json();
         setEvents(data.map((e: any) => ({
             id: e.id,
@@ -124,6 +129,12 @@ export default function Calendar() {
             method: 'POST',
             headers: { Authorization: `Bearer ${token}` }
         });
+        if (!res.ok) {
+            console.error(`Failed to import events: ${res.status} ${res.statusText}`);
+            alert('Failed to import events from Google Calendar');
+            setImporting(false);
+            return;
+        }
         const data = await res.json();
         alert(`Imported ${data.imported} events`);
         setImporting(false);
