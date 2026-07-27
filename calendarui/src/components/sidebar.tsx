@@ -13,6 +13,7 @@ type SidebarProps = {
     setForm: (form: EventForm) => void;
     onSave: () => void;
     onDelete: () => void;
+    onDuplicate: () => void;
     onClose: () => void;
 };
 
@@ -23,6 +24,7 @@ export default function Sidebar({
     setForm,
     onSave,
     onDelete,
+    onDuplicate,
     onClose,
 }: SidebarProps) {
     if (!isOpen) return null;
@@ -102,9 +104,14 @@ export default function Sidebar({
                 gap: '8px',
             }}>
                 {editingEvent && (
+                 <>
                     <button onClick={onDelete} style={{ color: 'red' }}>
                         Delete
                     </button>
+                    <button onClick={onDuplicate}>
+                            Duplicate
+                    </button>
+                  </>
                 )}
                 <button onClick={onClose}>Cancel</button>
                 <button onClick={onSave}>Save</button>

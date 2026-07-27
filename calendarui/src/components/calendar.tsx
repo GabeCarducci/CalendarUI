@@ -122,6 +122,36 @@ export default function Calendar() {
         fetchEvents();
     }
 
+    async function handleDuplicate() {
+        if (!editingEvent) return;
+
+        const startTime = new Date(`${form.date}T${form.start}:00`);
+        const endTime = new Date(`${form.date}T${form.end}:00`);
+
+        if (endTime <= startTime) {
+            alert('End time must be after start time');
+            return;
+        }
+
+        const token = await getAccessTokenSilently();
+        await fetch('/api/calendar/event', {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                title: `${form.title} (copy)`,
+                start: `${form.date}T${form.start}:00`,
+                end: `${form.date}T${form.end}:00`,
+                description: form.description,
+            }),
+        });
+
+        setSidebarOpen(false);
+        fetchEvents();
+    }
+
     async function handleImportGoogle() {
         setImporting(true);
         const token = await getAccessTokenSilently();
@@ -172,6 +202,7 @@ export default function Calendar() {
                 setForm={setForm}
                 onSave={handleSave}
                 onDelete={handleDelete}
+                onDuplicate={handleDuplicate}
                 onClose={() => setSidebarOpen(false)}
             />
         </div>
