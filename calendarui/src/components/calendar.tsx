@@ -122,11 +122,11 @@ export default function Calendar() {
         fetchEvents();
     }
 
-    async function handleDuplicate() {
+    async function handleDuplicate(targetDate: string) {
         if (!editingEvent) return;
 
-        const startTime = new Date(`${form.date}T${form.start}:00`);
-        const endTime = new Date(`${form.date}T${form.end}:00`);
+        const startTime = new Date(`${targetDate}T${form.start}:00`);
+        const endTime = new Date(`${targetDate}T${form.end}:00`);
 
         if (endTime <= startTime) {
             alert('End time must be after start time');
@@ -142,8 +142,8 @@ export default function Calendar() {
             },
             body: JSON.stringify({
                 title: `${form.title} (copy)`,
-                start: `${form.date}T${form.start}:00`,
-                end: `${form.date}T${form.end}:00`,
+                start: `${targetDate}T${form.start}:00`,
+                end: `${targetDate}T${form.end}:00`,
                 description: form.description,
             }),
         });

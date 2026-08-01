@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 type EventForm = {
     title: string;
     date: string;
@@ -13,7 +15,7 @@ type SidebarProps = {
     setForm: (form: EventForm) => void;
     onSave: () => void;
     onDelete: () => void;
-    onDuplicate: () => void;
+    onDuplicate: (targetDate: string) => void;   // CHANGED: now takes a date
     onClose: () => void;
 };
 
@@ -27,7 +29,20 @@ export default function Sidebar({
     onDuplicate,
     onClose,
 }: SidebarProps) {
+    const [duplicating, setDuplicating] = useState(false);
+    const [duplicateDate, setDuplicateDate] = useState(form.date);
+
     if (!isOpen) return null;
+
+    function startDuplicate() {
+        setDuplicateDate(form.date); // default to the event's own date
+        setDuplicating(true);
+    }
+
+    function confirmDuplicate() {
+        onDuplicate(duplicateDate);
+        setDuplicating(false);
+    }
 
     return (
         <div style={{
@@ -94,6 +109,28 @@ export default function Sidebar({
                         style={{ height: '80px', resize: 'none' }}
                     />
                 </div>
+
+                {duplicating && (
+                    <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '4px',
+                        padding: '10px',
+                        background: '#f7f7f7',
+                        borderRadius: '6px',
+                    }}>
+                        <label style={{ fontSize: '12px' }}>Duplicate to date</label>
+                        <input
+                            type="date"
+                            value={duplicateDate}
+                            onChange={e => setDuplicateDate(e.target.value)}
+                        />
+                        <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                            <button onClick={confirmDuplicate}>Confirm</button>
+                            <button onClick={() => setDuplicating(false)}>Cancel</button>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Buttons pinned to bottom */}
@@ -104,14 +141,14 @@ export default function Sidebar({
                 gap: '8px',
             }}>
                 {editingEvent && (
-                 <>
-                    <button onClick={onDelete} style={{ color: 'red' }}>
-                        Delete
-                    </button>
-                    <button onClick={onDuplicate}>
+                    <>
+                        <button onClick={onDelete} style={{ color: 'red' }}>
+                            Delete
+                        </button>
+                        <button onClick={startDuplicate}>
                             Duplicate
-                    </button>
-                  </>
+                        </button>
+                    </>
                 )}
                 <button onClick={onClose}>Cancel</button>
                 <button onClick={onSave}>Save</button>
