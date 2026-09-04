@@ -59,7 +59,8 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins("http://localhost:63566") // your Vite port
               .AllowAnyHeader()
-              .AllowAnyMethod();
+              .AllowAnyMethod()
+              .AllowCredentials();
     });
 });
 

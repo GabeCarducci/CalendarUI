@@ -8,7 +8,8 @@ export default defineConfig({
         port: 63566,
         strictPort: false,
         proxy: {
-            '/api': 'http://localhost:3001'
+            '/api': 'http://localhost:3001',
+            '/hubs': { target: 'http://localhost:3001', ws: true },
         },
     }
 })

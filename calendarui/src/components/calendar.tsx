@@ -5,6 +5,7 @@ import interactionPlugin from '@fullcalendar/interaction';
 import { useEffect, useState, useCallback } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
 import Sidebar from './sidebar';
+import { useCalendarHub } from '../hooks/useCalendarHub';
 
 type EventForm = {
     title: string;
@@ -13,10 +14,22 @@ type EventForm = {
     end: string;
     description: string;
 };
+type Props = {
+    calendarId: string
+};
 
-export default function Calendar() {
+function toFcEvent(e: any) {
+    return {
+        id: e.id,
+        title: e.title,
+        start: e.startTime,
+        end: e.endTime,
+        extendedProps: { description: e.description }
+    };
+}
+export default function Calendar({ calendarId }: Props) {
     const { getAccessTokenSilently, user } = useAuth0();
-    const [events, setEvents] = useState([]);
+    const [events, setEvents] = useState<any[]>([]);
     const [importing, setImporting] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [editingEvent, setEditingEvent] = useState<any>(null);
@@ -37,16 +50,16 @@ export default function Calendar() {
             return;
         }
         const data = await res.json();
-        setEvents(data.map((e: any) => ({
-            id: e.id,
-            title: e.title,
-            start: e.startTime,
-            end: e.endTime,
-            extendedProps: { description: e.description }
-        })));
-    }, [getAccessTokenSilently]);
+        setEvents(data.map(toFcEvent));
+    }, [getAccessTokenSilently, calendarId]);
 
     useEffect(() => { fetchEvents(); }, [fetchEvents]);
+
+    useCalendarHub(calendarId, getAccessTokenSilently, {
+        onEventCreated: (e) => setEvents(prev => prev.some(x => x.id === e.id) ? prev : [...prev, toFcEvent(e)]),
+        onEventUpdated: (e) => setEvents(prev => prev.map(x => x.id === e.id ? toFcEvent(e) : x)),
+        onEventDeleted: (id) => setEvents(prev => prev.filter(x => x.id !== id)),
+    });
 
     function handleDateClick({ dateStr }: { dateStr: string }) {
         setEditingEvent(null);

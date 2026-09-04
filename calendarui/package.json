@@ -17,6 +17,7 @@
     "@fullcalendar/react": "^6.1.20",
     "@fullcalendar/timegrid": "^6.1.20",
     "@libsql/client": "^0.17.2",
+    "@microsoft/signalr": "^8.0.7",
     "@prisma/adapter-libsql": "^7.7.0",
     "@prisma/client": "^7.7.0",
     "@supabase/ssr": "^0.10.2",
