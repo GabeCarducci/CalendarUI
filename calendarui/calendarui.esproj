@@ -12,7 +12,6 @@
     <None Remove="server.ts" />
   </ItemGroup>
   <ItemGroup>
-    <Folder Include="src\lib\" />
     <Folder Include="src\pages\" />
   </ItemGroup>
 </Project>
