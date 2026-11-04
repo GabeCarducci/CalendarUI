@@ -5,7 +5,7 @@ import '../index.css';
 import './CalendarPage.css';
 
 export default function CalendarPage() {
-  const { logout } = useAuth0();
+  const { isAuthenticated, isLoading, loginWithRedirect, logout } = useAuth0();
   const [showCalendar, setShowCalendar] = useState(false);
 
   return (
@@ -14,9 +14,12 @@ export default function CalendarPage() {
         <button
           className="logout-button"
           type="button"
-          onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
+          disabled={isLoading}
+          onClick={() => isAuthenticated
+            ? logout({ logoutParams: { returnTo: window.location.origin } })
+            : loginWithRedirect()}
         >
-          Log out
+          {isAuthenticated ? 'Log out' : 'Log in'}
         </button>
       </div>
       <h1>Community Calendar</h1>
@@ -26,7 +29,7 @@ export default function CalendarPage() {
         <>
           <h2>Bring Everyone Together</h2>
           <h3>Create Your First Calendar Below</h3>
-          <button className="create-calendar-button" type="button" onClick={() => setShowCalendar(true)}>
+          <button className="create-calendar-button" type="button" disabled={isLoading} onClick={() => isAuthenticated ? setShowCalendar(true) : loginWithRedirect()}>
             Create Calendar
           </button>
         </>

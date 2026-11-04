@@ -3,7 +3,9 @@ import type { FormEvent } from 'react';
 import type { CalendarEvent, CalendarProps } from 'calendarkit-pro';
 import './EventDialog.css';
 
-type Props = Omit<Parameters<NonNullable<CalendarProps['renderEventForm']>>[0], 'isOpen'>;
+type Props = Omit<Parameters<NonNullable<CalendarProps['renderEventForm']>>[0], 'isOpen' | 'onSave'> & {
+    onSave: (event: Partial<CalendarEvent>) => void | Promise<void>;
+};
 
 // datetime-local expects local wall time rather than a UTC ISO string.
 function localDateTime(date: Date) {
@@ -22,6 +24,7 @@ export default function EventDialog({ event, initialDate, onSave, onDelete, onCl
     const [guests, setGuests] = useState(event?.guests?.join(', ') ?? '');
     const [recurrence, setRecurrence] = useState(event?.recurrence?.freq ?? '');
     const [reminder, setReminder] = useState(event?.reminders?.[0]?.time.toString() ?? '30');
+    const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState('');
 
     useEffect(() => {
@@ -30,8 +33,9 @@ export default function EventDialog({ event, initialDate, onSave, onDelete, onCl
         return () => element?.close();
     }, []);
 
-    function save(e: FormEvent<HTMLFormElement>) {
+    async function save(e: FormEvent<HTMLFormElement>) {
         e.preventDefault();
+        if (isSaving) return;
         if (!title.trim()) return setError('Give your event a title.');
         const startDate = new Date(start);
         const endDate = new Date(end);
@@ -43,18 +47,26 @@ export default function EventDialog({ event, initialDate, onSave, onDelete, onCl
             description, location,
             guests: guests.split(',').map(guest => guest.trim()).filter(Boolean),
             recurrence: recurrence ? { ...event?.recurrence, freq: recurrence as NonNullable<CalendarEvent['recurrence']>['freq'] } : undefined,
-            reminders: reminder ? [{ id: event?.reminders?.[0]?.id ?? crypto.randomUUID(), type: 'notification', time: Number(reminder), label: `${reminder} minutes before` }] : [],
+            reminders: reminder ? [{ id: event?.reminders?.[0]?.id ?? (crypto.randomUUID?.() ?? crypto.getRandomValues(new Uint32Array(4)).join('-')), type: 'notification', time: Number(reminder), label: `${reminder} minutes before` }] : [],
         };
-        onSave(next);
-        onClose();
+        setError('');
+        setIsSaving(true);
+        try {
+            await onSave(next);
+            onClose();
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Could not save the event. Try again.');
+        } finally {
+            setIsSaving(false);
+        }
     }
 
     return (
-        <dialog ref={dialog} className="event-dialog" aria-labelledby={headingId} onCancel={onClose}>
+        <dialog ref={dialog} className="event-dialog" aria-labelledby={headingId} onCancel={e => { if (isSaving) e.preventDefault(); else onClose(); }}>
             <form className="event-dialog-form" onSubmit={save}>
                 <header className="event-dialog-header">
                     <div><p className="event-dialog-eyebrow">COMMUNITY CALENDAR</p><h2 id={headingId}>{event ? 'Edit event' : 'Create your event'}</h2><p>{event ? 'Update the details for your event.' : 'Enter details below.'}</p></div>
-                    <button className="event-dialog-close" type="button" aria-label="Close event form" onClick={onClose}>×</button>
+                    <button className="event-dialog-close" type="button" disabled={isSaving} aria-label="Close event form" onClick={onClose}>×</button>
                 </header>
                 <div className="event-dialog-body">
                     <label className="event-field">Event title <input autoFocus required value={title} onChange={e => setTitle(e.target.value)} placeholder="What’s happening?" /></label>
@@ -77,7 +89,7 @@ export default function EventDialog({ event, initialDate, onSave, onDelete, onCl
                 </div>
                 <footer className="event-dialog-footer">
                     {event && onDelete && <button className="event-dialog-delete" type="button" onClick={() => { onDelete(event.id); onClose(); }}>Delete event</button>}
-                    <div className="event-dialog-actions"><button className="event-dialog-cancel" type="button" onClick={onClose}>Cancel</button><button className="event-dialog-save" type="submit">{event ? 'Save changes' : 'Create event'} <span aria-hidden="true">↗</span></button></div>
+                    <div className="event-dialog-actions"><button className="event-dialog-cancel" type="button" disabled={isSaving} onClick={onClose}>Cancel</button><button className="event-dialog-save" type="submit" disabled={isSaving}>{isSaving ? 'Saving…' : event ? 'Save changes' : 'Create event'} <span aria-hidden="true">↗</span></button></div>
                 </footer>
             </form>
         </dialog>
