@@ -72,10 +72,7 @@ export default function Calendar() {
       creationdate: new Date().toISOString(),
       // userid omitted: it's an integer column and Auth0 IDs are text
     }).select().single<EventRow>();
-    if (error) {
-      console.error(error);
-      throw new Error('Could not create the event. Try again.');
-    }
+    if (error) return console.error(error);
     setEvents(prev => [...prev, fromRow(data)]);
   }
 
@@ -104,9 +101,7 @@ export default function Calendar() {
         date={date} onDateChange={setDate}
         onEventCreate={createEvent} onEventUpdate={updateEvent}
         onEventDelete={deleteEvent} onEventDrop={moveEvent} onEventResize={moveEvent}
-        renderEventForm={({ isOpen, onSave, ...props }) => isOpen ? (
-          <EventDialog {...props} onSave={props.event ? onSave : createEvent} />
-        ) : null}
+        renderEventForm={({ isOpen, ...props }) => isOpen ? <EventDialog {...props} /> : null}
       />
     </div>
   );
