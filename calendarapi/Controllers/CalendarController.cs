@@ -15,6 +15,7 @@ public class CalendarController : ControllerBase
     private readonly IClaimsService _claimsService;
     private readonly IHubContext<CalendarHub> _hub;
     private string UserId => _claimsService.GetUserId() ?? throw new UnauthorizedAccessException();
+    private string? UserEmail => _claimsService.GetUserEmail();
 
     public CalendarController(AppDbContext db, IClaimsService claimsService, IHubContext<CalendarHub> hub)
     {
@@ -23,7 +24,160 @@ public class CalendarController : ControllerBase
         _hub = hub;
     }
 
-    private async Task<bool> IsMemberAsync(string calendarId, bool requireEditorOrOwner = false)
+    // GET /api/calendar/events?calendarId=...
+    [HttpGet("events")]
+    public async Task<IActionResult> GetEvents([FromQuery] Guid calendarId)
+    {
+        if (calendarId == Guid.Empty) return BadRequest(new { error = "calendarId is required" });
+        if (!await IsMemberAsync(calendarId)) return Forbid();
+
+        var rows = await _db.Events
+            .Where(e => e.CalendarId == calendarId)
+            .OrderBy(e => e.StartTime)
+            .Select(e => new
+            {
+                Event = e,
+                AttendeeIds = _db.EventAttendees
+                    .Where(a => a.EventId == e.EventId)
+                    .Select(a => a.UserId)
+                    .ToList()
+            })
+            .ToListAsync();
+
+        return Ok(rows.Select(r => EventResponseDto.From(r.Event, r.AttendeeIds)));
+    }
+
+    // POST /api/calendar/event   (Owners and Editors only)
+    [HttpPost("event")]
+    public async Task<IActionResult> CreateEvent([FromBody] CreateEventDto dto)
+    {
+        if (dto.CalendarId == Guid.Empty) return BadRequest(new { error = "calendarId is required" });
+        if (Validate(dto.Title, dto.Start, dto.End) is { } error) return BadRequest(new { error });
+        if (!await IsMemberAsync(dto.CalendarId, requireEditorOrOwner: true)) return Forbid();
+
+        var ev = new Event
+        {
+            CalendarId = dto.CalendarId,
+            CreatedByUserId = UserId,
+            Title = dto.Title.Trim(),
+            Description = dto.Description,
+            StartTime = ToUtc(dto.Start),
+            EndTime = ToUtc(dto.End),
+            AllDay = dto.AllDay
+        };
+        _db.Events.Add(ev);
+        _db.EventAttendees.Add(new EventAttendee { EventId = ev.EventId, UserId = UserId, Email = UserEmail });
+        await _db.SaveChangesAsync();
+
+        var result = await ToDto(ev);
+        await _hub.Clients.Group(CalendarHub.GroupName(ev.CalendarId)).SendAsync("eventCreated", result);
+        return Ok(result);
+    }
+
+    // PUT or PATCH /api/calendar/event/{id}   (Owners and Editors only)
+    [HttpPut("event/{id:guid}")]
+    [HttpPatch("event/{id:guid}")]
+    public async Task<IActionResult> UpdateEvent(Guid id, [FromBody] UpdateEventDto dto)
+    {
+        if (Validate(dto.Title, dto.Start, dto.End) is { } error) return BadRequest(new { error });
+
+        var ev = await _db.Events.FindAsync(id);
+        if (ev == null) return NotFound();
+        if (!await IsMemberAsync(ev.CalendarId, requireEditorOrOwner: true)) return Forbid();
+
+        ev.Title = dto.Title.Trim();
+        ev.Description = dto.Description;
+        ev.StartTime = ToUtc(dto.Start);
+        ev.EndTime = ToUtc(dto.End);
+        ev.AllDay = dto.AllDay;
+        ev.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        var result = await ToDto(ev);
+        await _hub.Clients.Group(CalendarHub.GroupName(ev.CalendarId)).SendAsync("eventUpdated", result);
+        return Ok(result);
+    }
+
+    // DELETE /api/calendar/event/{id}   (Owners and Editors only)
+    [HttpDelete("event/{id:guid}")]
+    public async Task<IActionResult> DeleteEvent(Guid id)
+    {
+        var ev = await _db.Events.FindAsync(id);
+        if (ev == null) return NotFound();
+        if (!await IsMemberAsync(ev.CalendarId, requireEditorOrOwner: true)) return Forbid();
+
+        _db.Events.Remove(ev);
+        await _db.SaveChangesAsync();
+
+        await _hub.Clients.Group(CalendarHub.GroupName(ev.CalendarId)).SendAsync("eventDeleted", ev.EventId);
+        return Ok(new { success = true });
+    }
+
+    // POST /api/calendar/event/{id}/attend   -> "I'm going"   (any member)
+    [HttpPost("event/{id:guid}/attend")]
+    public async Task<IActionResult> Attend(Guid id)
+    {
+        var ev = await _db.Events.FindAsync(id);
+        if (ev == null) return NotFound();
+        if (!await IsMemberAsync(ev.CalendarId)) return Forbid();
+
+        if (!await _db.EventAttendees.AnyAsync(a => a.EventId == id && a.UserId == UserId))
+        {
+            _db.EventAttendees.Add(new EventAttendee { EventId = id, UserId = UserId, Email = UserEmail });
+            await _db.SaveChangesAsync();
+        }
+
+        var result = await ToDto(ev);
+        await _hub.Clients.Group(CalendarHub.GroupName(ev.CalendarId)).SendAsync("eventUpdated", result);
+        return Ok(result);
+    }
+
+    // DELETE /api/calendar/event/{id}/attend   -> "I'm not going anymore"
+    [HttpDelete("event/{id:guid}/attend")]
+    public async Task<IActionResult> Leave(Guid id)
+    {
+        var ev = await _db.Events.FindAsync(id);
+        if (ev == null) return NotFound();
+        if (!await IsMemberAsync(ev.CalendarId)) return Forbid();
+
+        var row = await _db.EventAttendees.FindAsync(id, UserId);
+        if (row != null)
+        {
+            _db.EventAttendees.Remove(row);
+            await _db.SaveChangesAsync();
+        }
+
+        var result = await ToDto(ev);
+        await _hub.Clients.Group(CalendarHub.GroupName(ev.CalendarId)).SendAsync("eventUpdated", result);
+        return Ok(result);
+    }
+
+    // GET /api/calendar/event/{id}/attendees   -> who's going, with emails
+    [HttpGet("event/{id:guid}/attendees")]
+    public async Task<IActionResult> GetAttendees(Guid id)
+    {
+        var ev = await _db.Events.FindAsync(id);
+        if (ev == null) return NotFound();
+        if (!await IsMemberAsync(ev.CalendarId)) return Forbid();
+
+        var attendees = await _db.EventAttendees
+            .Where(a => a.EventId == id)
+            .OrderBy(a => a.JoinedAt)
+            .Select(a => new { a.UserId, a.Email, a.JoinedAt })
+            .ToListAsync();
+        return Ok(attendees);
+    }
+
+    private async Task<EventResponseDto> ToDto(Event ev)
+    {
+        var attendeeIds = await _db.EventAttendees
+            .Where(a => a.EventId == ev.EventId)
+            .Select(a => a.UserId)
+            .ToListAsync();
+        return EventResponseDto.From(ev, attendeeIds);
+    }
+
+    private async Task<bool> IsMemberAsync(Guid calendarId, bool requireEditorOrOwner = false)
     {
         var m = await _db.CalendarMembers
             .FirstOrDefaultAsync(x => x.CalendarId == calendarId && x.UserId == UserId);
@@ -32,77 +186,15 @@ public class CalendarController : ControllerBase
         return true;
     }
 
+    private static string? Validate(string title, DateTime start, DateTime end)
+    {
+        if (string.IsNullOrWhiteSpace(title)) return "title is required";
+        if (ToUtc(end) < ToUtc(start)) return "end must be after start";
+        return null;
+    }
+
     private static DateTime ToUtc(DateTime d) =>
-    d.Kind == DateTimeKind.Unspecified
-        ? DateTime.SpecifyKind(d, DateTimeKind.Utc)
-        : d.ToUniversalTime();
-
-    [HttpGet("events")]
-    public async Task<IActionResult> GetEvents([FromQuery] string calendarId)
-    {
-        if (string.IsNullOrEmpty(calendarId)) return BadRequest(new { error = "calendarId is required" });
-        if (!await IsMemberAsync(calendarId)) return Forbid();
-
-        var events = await _db.Events
-            .Where(e => e.CalendarId == calendarId)
-            .OrderBy(e => e.StartTime)
-            .ToListAsync();
-        return Ok(events.Select(EventResponseDto.From));
-    }
-
-    [HttpPost("event")]
-    public async Task<IActionResult> CreateEvent([FromBody] CreateEventDto dto)
-    {
-        if (string.IsNullOrEmpty(dto.CalendarId)) return BadRequest(new { error = "calendarId is required" });
-        if (!await IsMemberAsync(dto.CalendarId, requireEditorOrOwner: true)) return Forbid();
-
-        var ev = new Event
-        {
-            CalendarId = dto.CalendarId,
-            UserId = UserId,
-            Title = dto.Title,
-            StartTime = ToUtc(dto.Start),
-            EndTime = ToUtc(dto.End),
-            Description = dto.Description
-        };
-        _db.Events.Add(ev);
-        await _db.SaveChangesAsync();
-
-        var result = EventResponseDto.From(ev);
-        await _hub.Clients.Group(CalendarHub.GroupName(ev.CalendarId)).SendAsync("eventCreated", result);
-        return Ok(result);
-    }
-
-    [HttpPut("event/{id}")]
-    [HttpPatch("event/{id}")]   // both verbs hit the same action
-    public async Task<IActionResult> UpdateEvent(string id, [FromBody] UpdateEventDto dto)
-    {
-        var ev = await _db.Events.FirstOrDefaultAsync(e => e.Id == id);
-        if (ev == null) return NotFound();
-        if (!await IsMemberAsync(ev.CalendarId, requireEditorOrOwner: true)) return Forbid();
-
-        ev.Title = dto.Title;
-        ev.StartTime = ToUtc(dto.Start);
-        ev.EndTime = ToUtc(dto.End);
-        ev.Description = dto.Description;
-        await _db.SaveChangesAsync();
-
-        var result = EventResponseDto.From(ev);
-        await _hub.Clients.Group(CalendarHub.GroupName(ev.CalendarId)).SendAsync("eventUpdated", result);
-        return Ok(result);
-    }
-
-    [HttpDelete("event/{id}")]
-    public async Task<IActionResult> DeleteEvent(string id)
-    {
-        var ev = await _db.Events.FirstOrDefaultAsync(e => e.Id == id);
-        if (ev == null) return NotFound();
-        if (!await IsMemberAsync(ev.CalendarId, requireEditorOrOwner: true)) return Forbid();
-
-        _db.Events.Remove(ev);
-        await _db.SaveChangesAsync();
-
-        await _hub.Clients.Group(CalendarHub.GroupName(ev.CalendarId)).SendAsync("eventDeleted", ev.Id);
-        return Ok(new { success = true });
-    }
+        d.Kind == DateTimeKind.Unspecified
+            ? DateTime.SpecifyKind(d, DateTimeKind.Utc)
+            : d.ToUniversalTime();
 }

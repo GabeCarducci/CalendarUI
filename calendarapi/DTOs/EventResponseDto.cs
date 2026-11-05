@@ -1,13 +1,15 @@
 ﻿namespace calendarapi.DTOs
 {
     public record EventResponseDto(
-    string Id, string CalendarId, string Title,
-    DateTime Start, DateTime End, string? Description)
+    Guid Id, Guid CalendarId, string Title,
+    DateTime Start, DateTime End, bool AllDay, string? Description,
+    string CreatedBy, IReadOnlyList<string> AttendeeIds)
     {
-        public static EventResponseDto From(Event e) => new(
-            e.Id, e.CalendarId, e.Title,
+        public static EventResponseDto From(Event e, IReadOnlyList<string> 
+            attendeeIds) => new(
+            e.EventId, e.CalendarId, e.Title,
             DateTime.SpecifyKind(e.StartTime, DateTimeKind.Utc),
             DateTime.SpecifyKind(e.EndTime, DateTimeKind.Utc),
-            e.Description);
+            e.AllDay, e.Description, e.CreatedByUserId, attendeeIds);
     }
 }

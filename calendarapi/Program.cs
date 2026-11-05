@@ -12,8 +12,14 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IClaimsService, ClaimsService>();
 builder.Services.AddSignalR();
 
+var supabaseConnection = builder.Configuration.GetConnectionString("Supabase");
+if (string.IsNullOrWhiteSpace(supabaseConnection) && !EF.IsDesignTime)
+    throw new InvalidOperationException(
+        "Missing ConnectionStrings:Supabase. Set it with: dotnet user-secrets set \"ConnectionStrings:Supabase\" \"<connection string>\"");
+
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite("Data Source=dev.db"));
+    options.UseNpgsql(supabaseConnection,
+        npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "app")));
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -37,6 +43,16 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
         options.Events = new JwtBearerEvents
         {
+            OnMessageReceived = context =>
+            {
+                var accessToken = context.Request.Query["access_token"];
+                if (!string.IsNullOrEmpty(accessToken) &&
+                    context.HttpContext.Request.Path.StartsWithSegments("/hubs"))
+                {
+                    context.Token = accessToken;
+                }
+                return Task.CompletedTask;
+            },
             OnAuthenticationFailed = context =>
             {
                 context.NoResult();
