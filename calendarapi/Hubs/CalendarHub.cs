@@ -15,7 +15,7 @@ public class CalendarHub : Hub
         _db = db;
     }
 
-    public async Task JoinCalendar(string calendarId)
+    public async Task JoinCalendar(Guid calendarId)
     {
         var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (userId == null) throw new HubException("Unauthorized");
@@ -27,8 +27,8 @@ public class CalendarHub : Hub
         await Groups.AddToGroupAsync(Context.ConnectionId, GroupName(calendarId));
     }
 
-    public async Task LeaveCalendar(string calendarId)
+    public async Task LeaveCalendar(Guid calendarId)
         => await Groups.RemoveFromGroupAsync(Context.ConnectionId, GroupName(calendarId));
 
-    public static string GroupName(string calendarId) => $"calendar-{calendarId}";
+    public static string GroupName(Guid calendarId) => $"calendar-{calendarId}";
 }
