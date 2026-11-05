@@ -71,8 +71,12 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 
-var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>()
-                     ?? new[] { "http://localhost:63566" };
+var allowedOrigins = (builder.Configuration.GetSection("AllowedOrigins").Get<string[]>()
+                      ?? new[] { "http://localhost:63566" })
+                     .Select(o => o.Trim().TrimEnd('/'))
+                     .ToArray();
+
+Console.WriteLine($"CORS allowed origins: {string.Join(", ", allowedOrigins)}");
 
 builder.Services.AddCors(options =>
 {
