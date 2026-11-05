@@ -4,6 +4,7 @@ import { Scheduler } from 'calendarkit-pro';
 import type { CalendarEvent, ViewType } from 'calendarkit-pro';
 import EventDialog from './EventDialog';
 import { useCalendarHub } from '../hooks/useCalendarHub';
+import { API_URL } from '../lib/api';
 
 // Shape of an event as the C# API sends it (see EventResponseDto.cs)
 type EventDto = {
@@ -25,7 +26,7 @@ export default function Calendar({ calendarId }: { calendarId: string }) {
 
   const api = useCallback(async (path: string, init: RequestInit = {}) => {
     const token = await getAccessTokenSilently();
-    const res = await fetch(`/api/calendar${path}`, {
+    const res = await fetch(`${API_URL}/api/calendar${path}`, {
       ...init,
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     });
