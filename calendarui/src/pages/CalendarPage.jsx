@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
 import AccountDropdown from '../components/AccountDropdown';
 import Calendar from '../components/calendar';
+import CalendarPicker from '../components/calendarPicker';
 import '../index.css';
 import './CalendarPage.css';
 
 export default function CalendarPage() {
   const { logout, user } = useAuth0();
   const [showCalendar, setShowCalendar] = useState(false);
+  const [calendarId, setCalendarId] = useState(null);
 
   return (
     <main>
@@ -23,7 +25,10 @@ export default function CalendarPage() {
       </div>
       <h1>Community Calendar</h1>
       {showCalendar ? (
-        <Calendar />
+       <>
+          <CalendarPicker selectedId={calendarId} onSelect={setCalendarId} />
+          {calendarId && <Calendar key={calendarId} calendarId={calendarId} />}
+        </>
       ) : (
         <>
           <h2>Bring Everyone Together</h2>
