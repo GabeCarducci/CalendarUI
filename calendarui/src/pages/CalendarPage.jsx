@@ -1,18 +1,20 @@
 import { useState } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
+import AccountDropdown from '../components/AccountDropdown';
 import Calendar from '../components/calendar';
 import '../index.css';
 import './CalendarPage.css';
 
 export default function CalendarPage() {
-  const { logout } = useAuth0();
+  const { logout, user } = useAuth0();
   const [showCalendar, setShowCalendar] = useState(false);
 
   return (
     <main>
-      <div className="calendar-page-actions">
+      <div className="flex items-start justify-between gap-3 px-5 pt-4">
+        <AccountDropdown user={user} />
         <button
-          className="logout-button"
+          className="logout-button shrink-0"
           type="button"
           onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
         >
