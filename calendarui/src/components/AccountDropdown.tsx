@@ -4,7 +4,6 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { API_URL } from '../lib/api';
 
-const itemClass = 'flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left';
 const maxNameLength = 50;
 type AccountProfile = { displayName: string; email: string | null };
 
@@ -169,13 +168,8 @@ export default function AccountDropdown({ user }: { user?: User }) {
             aria-expanded={showProfile}
             aria-controls={`${menuId}-profile`}
             onClick={() => setShowProfile(!showProfile)}
-            className={`${itemClass} cursor-pointer hover:bg-[#315c49] focus-visible:outline-2 focus-visible:outline-sky-400`}
+            className="logout-button"
           >
-            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="size-5 shrink-0">
-              <rect x="3" y="3" width="18" height="18" rx="6" />
-              <circle cx="12" cy="10" r="2.5" />
-              <path d="M6.5 19v-1a3 3 0 0 1 3-3h5a3 3 0 0 1 3 3v1" />
-            </svg>
             Profile
           </button>
           <div id={`${menuId}-profile`} hidden={!showProfile} className="px-3 pb-3">
