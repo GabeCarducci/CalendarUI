@@ -14,4 +14,11 @@ public class Event
     public string? GoogleId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    [MaxLength(10)]
+    public string? RecurrenceFreq { get; set; }      // DAILY, WEEKLY, MONTHLY or YEARLY; null = doesn't repeat
+    public int? RecurrenceInterval { get; set; }     // every N days/weeks/...; null = every 1
+    public int? RecurrenceCount { get; set; }        // stop after N times; null = no limit
+    public DateTime? RecurrenceUntil { get; set; }
+    [MaxLength(7)]
+    public string? Color { get; set; }   // like "#2563eb"; null = the calendar's default color
 }

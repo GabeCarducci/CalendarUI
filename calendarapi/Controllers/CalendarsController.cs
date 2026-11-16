@@ -33,12 +33,6 @@ public class CalendarsController : ControllerBase
                 new { Id = c.CalendarId, c.Name, c.OwnerUserId, m.Role })
             .ToListAsync();
 
-        if (calendars.Count == 0)
-        {
-            var cal = await CreateCalendarForMe("My Calendar");
-            return Ok(new[] { ToDto(cal, CalendarRole.Owner) });
-        }
-
         return Ok(calendars.Select(c => new { c.Id, c.Name, c.OwnerUserId, Role = c.Role.ToString() }));
     }
 
@@ -169,6 +163,32 @@ public class CalendarsController : ControllerBase
         await _hub.Clients.Group(CalendarHub.GroupName(id))
             .SendAsync("calendarRenamed", new { Id = id, cal.Name });
         return Ok(ToDto(cal, CalendarRole.Owner));
+    }
+
+    [HttpDelete("{id:guid}/members/me")]
+    public async Task<IActionResult> LeaveCalendar(Guid id)
+    {
+        var userId = UserId;
+        var member = await _db.CalendarMembers
+            .FirstOrDefaultAsync(m => m.CalendarId == id && m.UserId == userId);
+        if (member == null) return NotFound();
+        if (member.Role == CalendarRole.Owner)
+            return BadRequest(new { error = "The owner can't leave their own calendar. Delete it instead." });
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
+
+        // My "I'm going" marks on this calendar's events
+        await _db.EventAttendees
+            .Where(a => a.UserId == userId &&
+                        _db.Events.Any(e => e.EventId == a.EventId && e.CalendarId == id))
+            .ExecuteDeleteAsync();
+
+        // My membership
+        _db.CalendarMembers.Remove(member);
+        await _db.SaveChangesAsync();
+
+        await tx.CommitAsync();
+        return Ok(new { success = true });
     }
 
     // DELETE /api/calendars/{id}   (Owner only)

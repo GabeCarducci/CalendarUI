@@ -1,10 +1,10 @@
-using calendarapi.DTOs;
 using CalendarAPI.Hubs;
 using CalendarAPI.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using System.Text.RegularExpressions;
 
 [ApiController]
 [Route("api/calendar")]
@@ -54,7 +54,8 @@ public class CalendarController : ControllerBase
         if (dto.CalendarId == Guid.Empty) return BadRequest(new { error = "calendarId is required" });
         if (Validate(dto.Title, dto.Start, dto.End) is { } error) return BadRequest(new { error });
         if (!await IsMemberAsync(dto.CalendarId, requireEditorOrOwner: true)) return Forbid();
-
+        if (!TryNormalizeColor(dto.Color, out var color))
+            return BadRequest(new { error = "color must look like #2563eb" });
         var ev = new Event
         {
             CalendarId = dto.CalendarId,
@@ -63,8 +64,10 @@ public class CalendarController : ControllerBase
             Description = dto.Description,
             StartTime = ToUtc(dto.Start),
             EndTime = ToUtc(dto.End),
-            AllDay = dto.AllDay
+            AllDay = dto.AllDay,
+            Color = color
         };
+        if (ApplyRecurrence(ev, dto.Recurrence) is { } recurrenceError) return BadRequest(new { error = recurrenceError });
         _db.Events.Add(ev);
         _db.EventAttendees.Add(new EventAttendee { EventId = ev.EventId, UserId = UserId, Email = UserEmail });
         await _db.SaveChangesAsync();
@@ -84,12 +87,16 @@ public class CalendarController : ControllerBase
         var ev = await _db.Events.FindAsync(id);
         if (ev == null) return NotFound();
         if (!await IsMemberAsync(ev.CalendarId, requireEditorOrOwner: true)) return Forbid();
+        if (!TryNormalizeColor(dto.Color, out var color))
+            return BadRequest(new { error = "color must look like #2563eb" });
 
         ev.Title = dto.Title.Trim();
         ev.Description = dto.Description;
         ev.StartTime = ToUtc(dto.Start);
         ev.EndTime = ToUtc(dto.End);
         ev.AllDay = dto.AllDay;
+        ev.Color = color;
+        if (ApplyRecurrence(ev, dto.Recurrence) is { } recurrenceError) return BadRequest(new { error = recurrenceError });
         ev.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
 
@@ -193,8 +200,40 @@ public class CalendarController : ControllerBase
         return null;
     }
 
+    private static bool TryNormalizeColor(string? color, out string? normalized)
+    {
+        normalized = string.IsNullOrWhiteSpace(color) ? null : color.Trim().ToLowerInvariant();
+        return normalized == null || Regex.IsMatch(normalized, "^#[0-9a-f]{6}$");
+    }
+
     private static DateTime ToUtc(DateTime d) =>
         d.Kind == DateTimeKind.Unspecified
             ? DateTime.SpecifyKind(d, DateTimeKind.Utc)
             : d.ToUniversalTime();
+
+    private static readonly string[] Frequencies = { "DAILY", "WEEKLY", "MONTHLY", "YEARLY" };
+
+    // Copies the repeat settings onto the event. Returns an error message, or null if they're fine.
+    private static string? ApplyRecurrence(Event ev, RecurrenceDto? r)
+    {
+        if (r == null || string.IsNullOrWhiteSpace(r.Freq))
+        {
+            ev.RecurrenceFreq = null;
+            ev.RecurrenceInterval = null;
+            ev.RecurrenceCount = null;
+            ev.RecurrenceUntil = null;
+            return null;
+        }
+
+        var freq = r.Freq.Trim().ToUpperInvariant();
+        if (!Frequencies.Contains(freq)) return "recurrence.freq must be DAILY, WEEKLY, MONTHLY or YEARLY";
+        if (r.Interval is < 1) return "recurrence.interval must be at least 1";
+        if (r.Count is < 1) return "recurrence.count must be at least 1";
+
+        ev.RecurrenceFreq = freq;
+        ev.RecurrenceInterval = r.Interval;
+        ev.RecurrenceCount = r.Count;
+        ev.RecurrenceUntil = r.Until is { } until ? ToUtc(until) : null;
+        return null;
+    }
 }
