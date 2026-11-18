@@ -4,6 +4,8 @@ using Microsoft.EntityFrameworkCore;
 using CalendarAPI.Services;
 using CalendarAPI.Hubs;
 using Microsoft.AspNetCore.SignalR;
+using System.Net;        
+using System.Net.Mail;   
 
 [ApiController]
 [Route("api/calendars")]
@@ -15,12 +17,17 @@ public class CalendarsController : ControllerBase
     private readonly IClaimsService _claimsService;
     private string UserId => _claimsService.GetUserId() ?? throw new UnauthorizedAccessException();
     private string? UserEmail => _claimsService.GetUserEmail();
+    private readonly IEmailSender _emailSender;
+    private readonly IConfiguration _config;
 
-    public CalendarsController(AppDbContext db, IClaimsService claimsService, IHubContext<CalendarHub> hub)
+    public CalendarsController(AppDbContext db, IClaimsService claimsService, IHubContext<CalendarHub> hub,
+        IEmailSender emailSender, IConfiguration config)
     {
         _db = db;
         _claimsService = claimsService;
         _hub = hub;
+        _emailSender = emailSender;
+        _config = config;
     }
 
     // GET /api/calendars   -> every calendar I'm in, with my role
@@ -105,6 +112,12 @@ public class CalendarsController : ControllerBase
         if (myRole is null or CalendarRole.Viewer) return Forbid();
         if (ParseAssignableRole(dto.Role) is not { } role)
             return BadRequest(new { error = "role must be Editor or Viewer" });
+        var email = string.IsNullOrWhiteSpace(dto.Email) ? null : dto.Email.Trim().ToLowerInvariant();
+        if (email != null && !MailAddress.TryCreate(email, out _))
+            return BadRequest(new { error = "That doesn't look like an email address" });
+
+        var calendar = await _db.Calendars.FindAsync(id);
+        if (calendar == null) return NotFound();
 
         var invite = new CalendarInvite
         {
@@ -117,7 +130,27 @@ public class CalendarsController : ControllerBase
         _db.CalendarInvites.Add(invite);
         await _db.SaveChangesAsync();
 
-        return Ok(new { Id = invite.CalendarInviteId, invite.Code, invite.InviteeEmail, Role = invite.Role.ToString(), invite.ExpiresAt });
+        // If an email address was given, send the code there too.
+        // null = no email address given; false = it couldn't be sent (the code still works).
+        bool? emailSent = null;
+        if (email != null)
+        {
+            var inviterName = await _db.UserProfiles
+                .Where(p => p.UserId == UserId)
+                .Select(p => p.DisplayName)
+                .FirstOrDefaultAsync() ?? UserEmail ?? "Someone";
+            emailSent = await SendInviteEmailAsync(email, inviterName, calendar.Name, invite);
+        }
+
+        return Ok(new
+        {
+            Id = invite.CalendarInviteId,
+            invite.Code,
+            invite.InviteeEmail,
+            Role = invite.Role.ToString(),
+            invite.ExpiresAt,
+            EmailSent = emailSent
+        });
     }
 
     // POST /api/calendars/join   body: { "code": "..." }
@@ -128,9 +161,13 @@ public class CalendarsController : ControllerBase
         if (invite == null) return NotFound(new { error = "Invite not found" });
         if (invite.ExpiresAt is { } exp && exp < DateTime.UtcNow)
             return BadRequest(new { error = "Invite expired" });
+        // An invite sent to an email address only works for the account with that email
         if (invite.InviteeEmail != null &&
             !string.Equals(invite.InviteeEmail, UserEmail, StringComparison.OrdinalIgnoreCase))
-            return Forbid();
+            return StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                error = $"This invite was sent to {invite.InviteeEmail}. Log in with that email address to use it."
+            });
 
         var member = await _db.CalendarMembers
             .FirstOrDefaultAsync(m => m.CalendarId == invite.CalendarId && m.UserId == UserId);
@@ -212,6 +249,46 @@ public class CalendarsController : ControllerBase
         _db.CalendarMembers.Add(new CalendarMember { CalendarId = cal.CalendarId, UserId = UserId, Email = UserEmail, Role = CalendarRole.Owner });
         await _db.SaveChangesAsync();
         return cal;
+    }
+
+    private Task<bool> SendInviteEmailAsync(string to, string inviterName, string calendarName, CalendarInvite invite)
+    {
+        var siteUrl = _config["App:SiteUrl"]?.TrimEnd('/');
+        var roleText = invite.Role == CalendarRole.Editor
+            ? "an editor: you can see events, join them, chat, add events and change the ones you create"
+            : "a viewer: you can see events, join them and chat";
+        var expires = invite.ExpiresAt is { } e ? $"This invite expires on {e:MMMM d, yyyy}." : "";
+
+        var subject = $"{inviterName} invited you to \"{calendarName}\" on Community Calendar";
+
+        var text =
+            $"{inviterName} invited you to join the calendar \"{calendarName}\" as {roleText}.\n\n" +
+            $"Your invite code: {invite.Code}\n\n" +
+            "To join:\n" +
+            $"1. Go to {siteUrl ?? "Community Calendar"} and log in with this email address ({to}).\n" +
+            "2. Click \"Join with code\" and enter the code above.\n\n" +
+            expires;
+
+        // Everything people typed (names) is HTML-encoded so it can't inject markup into the email
+        string H(string value) => WebUtility.HtmlEncode(value);
+        var link = siteUrl == null
+            ? "Community Calendar"
+            : $"<a href=\"{H(siteUrl)}\" style=\"color:#203e32\">{H(siteUrl)}</a>";
+        var html = $"""
+        <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;color:#203e32">
+          <h2 style="margin:0 0 12px">You're invited to "{H(calendarName)}"</h2>
+          <p>{H(inviterName)} invited you to join this calendar as {H(roleText)}.</p>
+          <p style="margin:20px 0 6px">Your invite code:</p>
+          <p style="font-family:monospace;font-size:24px;letter-spacing:2px;background:#f7f8f1;border:1px solid #dce1d6;border-radius:8px;padding:12px 16px;display:inline-block;margin:0">{H(invite.Code)}</p>
+          <ol style="padding-left:20px;line-height:1.6">
+            <li>Go to {link} and log in with this email address ({H(to)}).</li>
+            <li>Click <strong>Join with code</strong> and enter the code above.</li>
+          </ol>
+          <p style="color:#758071;font-size:13px">{H(expires)}</p>
+        </div>
+        """;
+
+        return _emailSender.SendAsync(to, subject, html, text);
     }
 
     private static object ToDto(Calendar c, CalendarRole myRole) =>

@@ -58,7 +58,7 @@ export default function CalendarPage() {
       ) : showPicker ? (
         <>
           <CalendarPicker selectedId={calendarId} onSelect={setCalendarId} onRoleChange={setRole} />
-          {calendarId && <Calendar key={calendarId} calendarId={calendarId} canEdit={role === 'Owner' || role === 'Editor'} />}
+          {calendarId && <Calendar key={calendarId} calendarId={calendarId} role={role} />}
         </>
       ) : (
         <>

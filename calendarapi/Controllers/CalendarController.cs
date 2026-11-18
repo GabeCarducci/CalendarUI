@@ -86,7 +86,7 @@ public class CalendarController : ControllerBase
 
         var ev = await _db.Events.FindAsync(id);
         if (ev == null) return NotFound();
-        if (!await IsMemberAsync(ev.CalendarId, requireEditorOrOwner: true)) return Forbid();
+        if (!await CanChangeEventAsync(ev)) return Forbid();
         if (!TryNormalizeColor(dto.Color, out var color))
             return BadRequest(new { error = "color must look like #2563eb" });
 
@@ -111,7 +111,7 @@ public class CalendarController : ControllerBase
     {
         var ev = await _db.Events.FindAsync(id);
         if (ev == null) return NotFound();
-        if (!await IsMemberAsync(ev.CalendarId, requireEditorOrOwner: true)) return Forbid();
+        if (!await CanChangeEventAsync(ev)) return Forbid();
 
         _db.Events.Remove(ev);
         await _db.SaveChangesAsync();
@@ -182,6 +182,17 @@ public class CalendarController : ControllerBase
             .Select(a => a.UserId)
             .ToListAsync();
         return EventResponseDto.From(ev, attendeeIds);
+    }
+
+    private async Task<bool> CanChangeEventAsync(Event ev)
+    {
+        var role = await _db.CalendarMembers
+            .Where(m => m.CalendarId == ev.CalendarId && m.UserId == UserId)
+            .Select(m => (CalendarRole?)m.Role)
+            .FirstOrDefaultAsync();
+
+        return role == CalendarRole.Owner
+            || (role == CalendarRole.Editor && ev.CreatedByUserId == UserId);
     }
 
     private async Task<bool> IsMemberAsync(Guid calendarId, bool requireEditorOrOwner = false)
