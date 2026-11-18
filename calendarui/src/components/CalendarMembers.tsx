@@ -7,13 +7,17 @@ type Props = {
     id: string;
     calendarId: string;
     calendarName: string;
+    canManageRoles?: boolean;
     onClose: () => void;
 };
 
-export default function CalendarMembers({ id, calendarId, calendarName, onClose }: Props) {
+export default function CalendarMembers({ id, calendarId, calendarName, canManageRoles = false, onClose }: Props) {
     const { getAccessTokenSilently } = useAuth0();
     const [members, setMembers] = useState<Member[] | null>(null);
     const [loadFailed, setLoadFailed] = useState(false);
+    const [savingUserId, setSavingUserId] = useState<string | null>(null);
+    const [roleError, setRoleError] = useState('');
+    const [roleNotice, setRoleNotice] = useState('');
 
     useEffect(() => {
         const controller = new AbortController();
@@ -34,6 +38,31 @@ export default function CalendarMembers({ id, calendarId, calendarName, onClose 
         }
 
         void loadMembers();
+
+        async function changeRole(member: Member, role: string) {
+            if (role === member.role || savingUserId) return;
+            setSavingUserId(member.userId);
+            setRoleError('');
+            setRoleNotice('');
+            try {
+                const token = await getAccessTokenSilently();
+                const response = await fetch(
+                    `${API_URL}/api/calendars/${calendarId}/members/${encodeURIComponent(member.userId)}`,
+                    {
+                        method: 'PATCH',
+                        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ role }),
+                    },
+                );
+                if (!response.ok) throw new Error('Could not change role');
+                setMembers(current => current?.map(m => m.userId === member.userId ? { ...m, role } : m) ?? null);
+                setRoleNotice(`${member.displayName?.trim() || 'Member'} is now ${role === 'Editor' ? 'an Editor' : 'a Viewer'}.`);
+            } catch {
+                setRoleError('Could not change that role. Try again.');
+            } finally {
+                setSavingUserId(null);
+            }
+        }
         return () => controller.abort();
     }, [calendarId, getAccessTokenSilently]);
 
@@ -61,14 +90,32 @@ export default function CalendarMembers({ id, calendarId, calendarName, onClose 
             {members?.length === 0 && <p>No calendar members</p>}
             {!!members?.length && (
                 <ul className="calendar-picker-members">
-                    {members.map(member => (
-                        <li key={member.userId}>
-                            <span>{member.displayName?.trim() || 'Calendar member'}</span>
-                            <span className="calendar-picker-role">{member.role}</span>
-                        </li>
-                    ))}
+                    {members.map(member => {
+                        const name = member.displayName?.trim() || 'Calendar member';
+                        return (
+                            <li key={member.userId}>
+                                <span>{name}</span>
+                                {canManageRoles && member.role !== 'Owner' ? (
+                                    <select
+                                        className="calendar-picker-member-role"
+                                        aria-label={`Role for ${name}`}
+                                        value={member.role}
+                                        disabled={savingUserId !== null}
+                                        onChange={event => { void changeRole(member, event.target.value); }}
+                                    >
+                                        <option value="Viewer">Viewer</option>
+                                        <option value="Editor">Editor</option>
+                                    </select>
+                                ) : (
+                                    <span className="calendar-picker-role">{member.role}</span>
+                                )}
+                            </li>
+                        );
+                    })}
                 </ul>
             )}
+            {roleError && <p className="calendar-picker-error" role="alert">{roleError}</p>}
+            <p className="calendar-picker-notice" role="status">{roleNotice}</p>
         </section>
     );
 }
