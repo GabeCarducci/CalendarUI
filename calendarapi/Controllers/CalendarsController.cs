@@ -202,6 +202,38 @@ public class CalendarsController : ControllerBase
         return Ok(ToDto(cal, CalendarRole.Owner));
     }
 
+    // DELETE /api/calendars/{id}/members/{userId}   -> remove someone from the calendar (Owner only)
+    [HttpDelete("{id:guid}/members/{userId}")]
+    public async Task<IActionResult> RemoveMember(Guid id, string userId)
+    {
+        if (await MyRoleAsync(id) != CalendarRole.Owner) return Forbid();
+
+        var member = await _db.CalendarMembers
+            .FirstOrDefaultAsync(m => m.CalendarId == id && m.UserId == userId);
+        if (member == null) return NotFound();
+        if (member.Role == CalendarRole.Owner)
+            return BadRequest(new { error = "The owner can't be removed from their own calendar." });
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
+
+        // Their "I'm going" marks on this calendar's events
+        await _db.EventAttendees
+            .Where(a => a.UserId == userId &&
+                        _db.Events.Any(e => e.EventId == a.EventId && e.CalendarId == id))
+            .ExecuteDeleteAsync();
+
+        // Their membership
+        _db.CalendarMembers.Remove(member);
+        await _db.SaveChangesAsync();
+
+        await tx.CommitAsync();
+
+        // Tell the removed person's open pages, so they stop showing this calendar right away.
+        // Clients.User finds their connections by their Auth0 id (the same NameIdentifier claim).
+        await _hub.Clients.User(userId).SendAsync("removedFromCalendar", id);
+        return Ok(new { success = true });
+    }
+
     [HttpDelete("{id:guid}/members/me")]
     public async Task<IActionResult> LeaveCalendar(Guid id)
     {
