@@ -5,6 +5,7 @@ import { Scheduler } from 'calendarkit-pro';
 import type { CalendarEvent, ViewType } from 'calendarkit-pro';
 import EventDialog from './EventDialog';
 import EventChat from './EventChat';
+import EventAttendees from './EventAttendees';
 import UpcomingEvents from './UpcomingEvents';
 import { useCalendarHub } from '../hooks/useCalendarHub';
 import { API_URL } from '../lib/api';
@@ -67,7 +68,10 @@ function CloseImmediately({ onClose }: { onClose: () => void }) {
   return null;
 }
 
-export default function Calendar({ calendarId, role }: { calendarId: string; role: string | null }) {
+// onRemoved = called if the Owner removes me from this calendar while I'm looking at it
+export default function Calendar({ calendarId, role, onRemoved }: {
+  calendarId: string; role: string | null; onRemoved?: () => void;
+}) {
   const { getAccessTokenSilently, user } = useAuth0();
   const userId = user?.sub;
   const canCreate = role === 'Owner' || role === 'Editor';
@@ -126,6 +130,7 @@ export default function Calendar({ calendarId, role }: { calendarId: string; rol
     onEventDeleted: id => setEvents(prev => prev.filter(x => x.id !== id)),
     onMessageCreated: m => chatBus.dispatchEvent(new CustomEvent('messageCreated', { detail: m })),
     onMessageDeleted: m => chatBus.dispatchEvent(new CustomEvent('messageDeleted', { detail: m })),
+    onRemovedFromCalendar: id => { if (id === calendarId) onRemoved?.(); },
   });
 
   const body = (e: Partial<CalendarEvent>) => JSON.stringify({
@@ -221,6 +226,16 @@ export default function Calendar({ calendarId, role }: { calendarId: string; rol
                   onChange: going => changeAttendance(event.id, going),
                 } : undefined}
                 canEdit={event ? canChange(event) : canCreate}
+                attendees={event ? (
+                  <EventAttendees
+                    eventId={String(event.id)}
+                    attendeeIds={attendeeIds}
+                    userId={userId}
+                    canRemove={canChange(event)}
+                    api={api}
+                    onUpdated={updated => upsert(fromDto(updated as EventDto))}
+                  />
+                ) : undefined}
                 chat={event ? (
                   <EventChat key={event.id} eventId={String(event.id)} userId={userId} api={api} bus={chatBus} canModerate={role === 'Owner'} />
                 ) : undefined}

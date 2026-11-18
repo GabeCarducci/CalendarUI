@@ -18,6 +18,7 @@ export default function CalendarMembers({ id, calendarId, calendarName, canManag
     const [savingUserId, setSavingUserId] = useState<string | null>(null);
     const [roleError, setRoleError] = useState('');
     const [roleNotice, setRoleNotice] = useState('');
+    const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
 
     useEffect(() => {
         const controller = new AbortController();
@@ -66,6 +67,30 @@ export default function CalendarMembers({ id, calendarId, calendarName, canManag
             }
         }
 
+    // Owner only: take someone out of the calendar
+    async function removeMember(member: Member) {
+        if (savingUserId) return;
+        const name = member.displayName?.trim() || 'Member';
+        setSavingUserId(member.userId);
+        setRoleError('');
+        setRoleNotice('');
+        try {
+            const token = await getAccessTokenSilently();
+            const response = await fetch(
+                `${API_URL}/api/calendars/${calendarId}/members/${encodeURIComponent(member.userId)}`,
+                { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } },
+            );
+            if (!response.ok) throw new Error('Could not remove member');
+            setMembers(current => current?.filter(m => m.userId !== member.userId) ?? null);
+            setRoleNotice(`${name} was removed from ${calendarName}.`);
+        } catch {
+            setRoleError(`Could not remove ${name}. Try again.`);
+        } finally {
+            setSavingUserId(null);
+            setConfirmRemoveId(null);
+        }
+    }
+
     return (
         <section
             id={id}
@@ -96,16 +121,43 @@ export default function CalendarMembers({ id, calendarId, calendarName, canManag
                             <li key={member.userId}>
                                 <span>{name}</span>
                                 {canManageRoles && member.role !== 'Owner' ? (
-                                    <select
-                                        className="calendar-picker-member-role"
-                                        aria-label={`Role for ${name}`}
-                                        value={member.role}
-                                        disabled={savingUserId !== null}
-                                        onChange={event => { void changeRole(member, event.target.value); }}
-                                    >
-                                        <option value="Viewer">Viewer</option>
-                                        <option value="Editor">Editor</option>
-                                    </select>
+                                    confirmRemoveId === member.userId ? (
+                                        <span className="calendar-picker-member-actions">
+                                            <span>Remove {name}?</span>
+                                            <button type="button" disabled={savingUserId !== null} onClick={() => setConfirmRemoveId(null)}>
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="calendar-picker-danger"
+                                                disabled={savingUserId !== null}
+                                                onClick={() => { void removeMember(member); }}
+                                            >
+                                                {savingUserId === member.userId ? 'Removing…' : 'Remove'}
+                                            </button>
+                                        </span>
+                                    ) : (
+                                        <span className="calendar-picker-member-actions">
+                                            <select
+                                                className="calendar-picker-member-role"
+                                                aria-label={`Role for ${name}`}
+                                                value={member.role}
+                                                disabled={savingUserId !== null}
+                                                onChange={event => { void changeRole(member, event.target.value); }}
+                                            >
+                                                <option value="Viewer">Viewer</option>
+                                                <option value="Editor">Editor</option>
+                                            </select>
+                                            <button
+                                                type="button"
+                                                disabled={savingUserId !== null}
+                                                aria-label={`Remove ${name} from the calendar`}
+                                                onClick={() => setConfirmRemoveId(member.userId)}
+                                            >
+                                                Remove
+                                            </button>
+                                        </span>
+                                    )
                                 ) : (
                                     <span className="calendar-picker-role">{member.role}</span>
                                 )}

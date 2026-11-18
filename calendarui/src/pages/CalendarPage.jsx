@@ -13,6 +13,16 @@ export default function CalendarPage() {
   const [showCalendar, setShowCalendar] = useState(false);
   const [calendarId, setCalendarId] = useState(null);
   const [role, setRole] = useState(null);   // my role in the selected calendar
+  const [pickerKey, setPickerKey] = useState(0);
+  const [removedNotice, setRemovedNotice] = useState('');
+
+  // The Owner removed me from the calendar I'm viewing: close it and reload my calendar list
+  function handleRemoved() {
+    setCalendarId(null);
+    setRole(null);
+    setPickerKey(key => key + 1);
+    setRemovedNotice('You were removed from that calendar.');
+  }
 
   // Ask the API once whether this user already has any calendars
   useEffect(() => {
@@ -57,8 +67,14 @@ export default function CalendarPage() {
         <p>Loading your calendars…</p>
       ) : showPicker ? (
         <>
-          <CalendarPicker selectedId={calendarId} onSelect={setCalendarId} onRoleChange={setRole} />
-          {calendarId && <Calendar key={calendarId} calendarId={calendarId} role={role} />}
+          <p className="removed-notice" role="status">{removedNotice}</p>
+          <CalendarPicker
+            key={pickerKey}
+            selectedId={calendarId}
+            onSelect={id => { setCalendarId(id); if (id) setRemovedNotice(''); }}
+            onRoleChange={setRole}
+          />
+          {calendarId && <Calendar key={calendarId} calendarId={calendarId} role={role} onRemoved={handleRemoved} />}
         </>
       ) : (
         <>

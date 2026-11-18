@@ -47,6 +47,22 @@ public class CalendarController : ControllerBase
         return Ok(rows.Select(r => EventResponseDto.From(r.Event, r.AttendeeIds)));
     }
 
+    // GET /api/calendar/event/{id}/attendees   
+    [HttpGet("event/{id:guid}/attendees")]
+    public async Task<IActionResult> GetAttendees(Guid id)
+    {
+        var ev = await _db.Events.FindAsync(id);
+        if (ev == null) return NotFound();
+        if (!await IsMemberAsync(ev.CalendarId)) return Forbid();
+
+        var attendees = await _db.EventAttendees
+            .Where(a => a.EventId == id)
+            .OrderBy(a => a.JoinedAt)
+            .Select(a => new { a.UserId, a.Email, a.JoinedAt })
+            .ToListAsync();
+        return Ok(attendees);
+    }
+
     // POST /api/calendar/event   (Owners and Editors only)
     [HttpPost("event")]
     public async Task<IActionResult> CreateEvent([FromBody] CreateEventDto dto)
@@ -120,7 +136,7 @@ public class CalendarController : ControllerBase
         return Ok(new { success = true });
     }
 
-    // POST /api/calendar/event/{id}/attend   -> "I'm going"   (any member)
+    // POST /api/calendar/event/{id}/attend   
     [HttpPost("event/{id:guid}/attend")]
     public async Task<IActionResult> Attend(Guid id)
     {
@@ -139,7 +155,7 @@ public class CalendarController : ControllerBase
         return Ok(result);
     }
 
-    // DELETE /api/calendar/event/{id}/attend   -> "I'm not going anymore"
+    // DELETE /api/calendar/event/{id}/attend   
     [HttpDelete("event/{id:guid}/attend")]
     public async Task<IActionResult> Leave(Guid id)
     {
@@ -159,20 +175,24 @@ public class CalendarController : ControllerBase
         return Ok(result);
     }
 
-    // GET /api/calendar/event/{id}/attendees   -> who's going, with emails
-    [HttpGet("event/{id:guid}/attendees")]
-    public async Task<IActionResult> GetAttendees(Guid id)
+    // DELETE /api/calendar/event/{id}/attendees/{userId}   
+    // (the Owner, or the Editor who created the event)
+    [HttpDelete("event/{id:guid}/attendees/{userId}")]
+    public async Task<IActionResult> RemoveAttendee(Guid id, string userId)
     {
         var ev = await _db.Events.FindAsync(id);
         if (ev == null) return NotFound();
-        if (!await IsMemberAsync(ev.CalendarId)) return Forbid();
+        if (!await CanChangeEventAsync(ev)) return Forbid();
 
-        var attendees = await _db.EventAttendees
-            .Where(a => a.EventId == id)
-            .OrderBy(a => a.JoinedAt)
-            .Select(a => new { a.UserId, a.Email, a.JoinedAt })
-            .ToListAsync();
-        return Ok(attendees);
+        var row = await _db.EventAttendees.FindAsync(id, userId);
+        if (row == null) return NotFound();
+
+        _db.EventAttendees.Remove(row);
+        await _db.SaveChangesAsync();
+
+        var result = await ToDto(ev);
+        await _hub.Clients.Group(CalendarHub.GroupName(ev.CalendarId)).SendAsync("eventUpdated", result);
+        return Ok(result);
     }
 
     private async Task<EventResponseDto> ToDto(Event ev)
