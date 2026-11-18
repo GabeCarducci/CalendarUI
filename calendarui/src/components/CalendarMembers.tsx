@@ -38,8 +38,10 @@ export default function CalendarMembers({ id, calendarId, calendarName, canManag
         }
 
         void loadMembers();
+        return () => controller.abort();
+    }, [calendarId, getAccessTokenSilently]);
 
-        async function changeRole(member: Member, role: string) {
+    async function changeRole(member: Member, role: string) {
             if (role === member.role || savingUserId) return;
             setSavingUserId(member.userId);
             setRoleError('');
@@ -63,8 +65,6 @@ export default function CalendarMembers({ id, calendarId, calendarName, canManag
                 setSavingUserId(null);
             }
         }
-        return () => controller.abort();
-    }, [calendarId, getAccessTokenSilently]);
 
     return (
         <section
