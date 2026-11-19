@@ -4,8 +4,8 @@ using Microsoft.EntityFrameworkCore;
 using CalendarAPI.Services;
 using CalendarAPI.Hubs;
 using Microsoft.AspNetCore.SignalR;
-using System.Net;        
-using System.Net.Mail;   
+using System.Net;
+using System.Net.Mail;
 
 [ApiController]
 [Route("api/calendars")]
@@ -80,10 +80,10 @@ public class CalendarsController : ControllerBase
                 member.Email,
                 member.Role,
                 member.JoinedAt,
-                DisplayName = profile == null ? null : profile.DisplayName
+                Username = profile == null ? null : profile.Username
             }
         ).ToListAsync();
-        return Ok(members.Select(m => new { m.UserId, m.Email, Role = m.Role.ToString(), m.JoinedAt, m.DisplayName }));
+        return Ok(members.Select(m => new { m.UserId, m.Email, Role = m.Role.ToString(), m.JoinedAt, m.Username }));
     }
 
     // PATCH /api/calendars/{id}/members/{userId}   body: { "role": "Editor" }   (Owner only)
@@ -137,7 +137,7 @@ public class CalendarsController : ControllerBase
         {
             var inviterName = await _db.UserProfiles
                 .Where(p => p.UserId == UserId)
-                .Select(p => p.DisplayName)
+                .Select(p => p.Username)
                 .FirstOrDefaultAsync() ?? UserEmail ?? "Someone";
             emailSent = await SendInviteEmailAsync(email, inviterName, calendar.Name, invite);
         }

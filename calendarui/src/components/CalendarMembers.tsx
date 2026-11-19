@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
 import { API_URL } from '../lib/api';
 
-type Member = { userId: string; displayName: string | null; role: string };
+type Member = { userId: string; username: string | null; role: string };
 type Props = {
     id: string;
     calendarId: string;
@@ -59,7 +59,7 @@ export default function CalendarMembers({ id, calendarId, calendarName, canManag
                 );
                 if (!response.ok) throw new Error('Could not change role');
                 setMembers(current => current?.map(m => m.userId === member.userId ? { ...m, role } : m) ?? null);
-                setRoleNotice(`${member.displayName?.trim() || 'Member'} is now ${role === 'Editor' ? 'an Editor' : 'a Viewer'}.`);
+                setRoleNotice(`${member.username?.trim() || 'Member'} is now ${role === 'Editor' ? 'an Editor' : 'a Viewer'}.`);
             } catch {
                 setRoleError('Could not change that role. Try again.');
             } finally {
@@ -70,7 +70,7 @@ export default function CalendarMembers({ id, calendarId, calendarName, canManag
     // Owner only: take someone out of the calendar
     async function removeMember(member: Member) {
         if (savingUserId) return;
-        const name = member.displayName?.trim() || 'Member';
+        const name = member.username?.trim() || 'Member';
         setSavingUserId(member.userId);
         setRoleError('');
         setRoleNotice('');
@@ -116,7 +116,7 @@ export default function CalendarMembers({ id, calendarId, calendarName, canManag
             {!!members?.length && (
                 <ul className="calendar-picker-members">
                     {members.map(member => {
-                        const name = member.displayName?.trim() || 'Calendar member';
+                        const name = member.username?.trim() || 'Calendar member';
                         return (
                             <li key={member.userId}>
                                 <span>{name}</span>
