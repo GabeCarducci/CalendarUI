@@ -128,3 +128,28 @@
     .removed-notice:empty {
         display: none;
     }
+
+/* Logo + "Community Calendar" at the top; clicking it goes back to the landing page */
+.calendar-page-title a {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    color: inherit;
+    text-decoration: none;
+}
+
+    .calendar-page-title a:hover span {
+        text-decoration: underline;
+        text-underline-offset: 6px;
+    }
+
+    .calendar-page-title a:focus-visible {
+        outline: 3px solid #c56b36;
+        outline-offset: 5px;
+    }
+
+.calendar-page-logo {
+    height: 1.1em;
+    width: auto;
+    flex-shrink: 0;
+}

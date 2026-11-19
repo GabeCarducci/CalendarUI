@@ -30,17 +30,33 @@ public class CalendarsController : ControllerBase
         _config = config;
     }
 
-    // GET /api/calendars   -> every calendar I'm in, with my role
+    // GET /api/calendars   -> every calendar I'm in, with my role, most recently used first
+    // ("used" = last opened, or when I joined if I haven't opened it yet)
     [HttpGet]
     public async Task<IActionResult> GetMyCalendars()
     {
         var calendars = await _db.CalendarMembers
             .Where(m => m.UserId == UserId)
             .Join(_db.Calendars, m => m.CalendarId, c => c.CalendarId, (m, c) =>
-                new { Id = c.CalendarId, c.Name, c.OwnerUserId, m.Role })
+                new { Id = c.CalendarId, c.Name, c.OwnerUserId, m.Role, LastUsedAt = m.LastOpenedAt ?? m.JoinedAt })
             .ToListAsync();
 
-        return Ok(calendars.Select(c => new { c.Id, c.Name, c.OwnerUserId, Role = c.Role.ToString() }));
+        return Ok(calendars
+            .OrderByDescending(c => c.LastUsedAt)
+            .Select(c => new { c.Id, c.Name, c.OwnerUserId, Role = c.Role.ToString(), c.LastUsedAt }));
+    }
+
+    // POST /api/calendars/{id}/opened   -> remember that I just opened this calendar
+    [HttpPost("{id:guid}/opened")]
+    public async Task<IActionResult> MarkOpened(Guid id)
+    {
+        var member = await _db.CalendarMembers
+            .FirstOrDefaultAsync(m => m.CalendarId == id && m.UserId == UserId);
+        if (member == null) return Forbid();
+
+        member.LastOpenedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return NoContent();
     }
 
     // POST /api/calendars   -> create a calendar; I become its Owner
