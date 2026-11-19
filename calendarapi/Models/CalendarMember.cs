@@ -6,6 +6,7 @@ public class CalendarMember
     public Guid CalendarId { get; set; }
     public string UserId { get; set; } = "";
     public string? Email { get; set; }
-    public CalendarRole Role { get; set; } = CalendarRole.Viewer ;
+    public CalendarRole Role { get; set; } = CalendarRole.Viewer;
     public DateTime JoinedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? LastOpenedAt { get; set; }
 }

@@ -114,9 +114,12 @@ export default function CalendarPicker({ selectedId, onSelect, onRoleChange }: P
         return () => controller.abort();
     }, [getAccessTokenSilently]);
 
+    // Pick the first (most recently used) calendar when none is picked,
+    // or when the one asked for isn't mine anymore (e.g. an old link after being removed)
     useEffect(() => {
-        if (!selectedId && calendars.length > 0) onSelect(calendars[0].id);
-    }, [calendars, onSelect, selectedId]);
+        if (loading || calendars.length === 0) return;
+        if (!selectedId || !calendars.some(calendar => calendar.id === selectedId)) onSelect(calendars[0].id);
+    }, [calendars, loading, onSelect, selectedId]);
 
     function resetPanel(nextAction: Panel | null) {
         setAction(nextAction);
