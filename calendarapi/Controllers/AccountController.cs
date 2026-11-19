@@ -15,7 +15,6 @@ public class AccountController : ControllerBase
     private readonly IClaimsService _claimsService;
     private readonly IHubContext<CalendarHub> _hub;
     private string UserId => _claimsService.GetUserId() ?? throw new UnauthorizedAccessException();
-    private const int MaxNameLength = 50;
     private string? UserEmail => _claimsService.GetUserEmail();
     private string? TokenName => _claimsService.GetUserName();
 
@@ -34,20 +33,32 @@ public class AccountController : ControllerBase
         return Ok(ToDto(profile));
     }
 
-    // Put /api/account/name  body: {"displayName": "Gabe" }
-    [HttpPut("name")]
-    public async Task<IActionResult> UpdateDisplayName([FromBody] UpdateDisplayNameDto dto)
+    // PUT /api/account/username   body: { "username": "gabe_c" }
+    [HttpPut("username")]
+    public async Task<IActionResult> UpdateUsername([FromBody] UpdateUsernameDto dto)
     {
-        var name = dto.DisplayName?.Trim() ?? "";
-        if (name.Length == 0)
-            return BadRequest(new { error = "Display name is required" });
-        if (name.Length > MaxNameLength)
-            return BadRequest(new { error = $"Display name must be {MaxNameLength} characters long or less" });
+        var username = UsernameRules.Normalize(dto.Username);
+        if (UsernameRules.Problem(username) is { } problem)
+            return BadRequest(new { error = problem });
 
         var profile = await GetOrCreateProfileAsync();
-        profile.DisplayName = name;
+        if (profile.Username == username) return Ok(ToDto(profile));   // nothing to change
+
+        if (await _db.UserProfiles.AnyAsync(p => p.Username == username))
+            return Conflict(new { error = "That username is taken." });
+
+        profile.Username = username;
         profile.UpdatedAt = DateTime.UtcNow;
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            // Someone else took it in the moment between the check and the save;
+            // the unique index in the database stopped the duplicate.
+            return Conflict(new { error = "That username is taken." });
+        }
 
         return Ok(ToDto(profile));
     }
@@ -91,27 +102,48 @@ public class AccountController : ControllerBase
         var profile = await _db.UserProfiles.FindAsync(UserId);
         if (profile != null) return profile;
 
-        profile = new UserProfile { UserId = UserId, DisplayName = DefaultName(), Email = UserEmail };
-        _db.UserProfiles.Add(profile);
-        try 
+        // New user: start them with a username made from their name or email, e.g. "gabecarducci".
+        // They can change it from the account menu.
+        var start = UsernameRules.FromText(
+            !string.IsNullOrWhiteSpace(TokenName) ? TokenName : UserEmail?.Split('@')[0]);
+
+        for (var attempt = 0; attempt < 3; attempt++)
         {
-            await _db.SaveChangesAsync();
+            profile = new UserProfile { UserId = UserId, Username = await FreeUsernameAsync(start), Email = UserEmail };
+            _db.UserProfiles.Add(profile);
+            try
+            {
+                await _db.SaveChangesAsync();
+                return profile;
+            }
+            catch (DbUpdateException)
+            {
+                _db.Entry(profile).State = EntityState.Detached;
+                // Either this same user's profile was created by another request at the same moment...
+                var existing = await _db.UserProfiles.FindAsync(UserId);
+                if (existing != null) return existing;
+                // ...or someone else grabbed that username at the same moment: try again.
+            }
         }
-        catch (DbUpdateException)
-        {
-            _db.Entry(profile).State = EntityState.Detached;
-            profile = await _db.UserProfiles.FirstAsync(p => p.UserId == UserId);
-        }
-        return profile;
+        throw new InvalidOperationException("Could not create a profile with a unique username");
     }
 
-    private string DefaultName()
+    // "gabe" if nobody has it, otherwise "gabe2", "gabe3", ...
+    private async Task<string> FreeUsernameAsync(string start)
     {
-        var name = TokenName?.Trim();
-        if (string.IsNullOrEmpty(name)) name = UserEmail?.Split('@')[0];
-        if (string.IsNullOrEmpty(name)) name = "New user";
-        return name.Length > MaxNameLength ? name[..MaxNameLength] : name;
+        var taken = await _db.UserProfiles
+            .Where(p => p.Username.StartsWith(start))
+            .Select(p => p.Username)
+            .ToListAsync();
+        if (!taken.Contains(start)) return start;
+
+        for (var n = 2; n < 10000; n++)
+        {
+            var candidate = $"{start}{n}";
+            if (!taken.Contains(candidate)) return candidate;
+        }
+        return $"{start}{Random.Shared.Next(10000, 99999)}";
     }
 
-    private static object ToDto(UserProfile p) => new { p.UserId, p.DisplayName, p.Email };
+    private static object ToDto(UserProfile p) => new { p.UserId, p.Username, p.Email };
 }

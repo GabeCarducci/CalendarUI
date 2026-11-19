@@ -38,7 +38,9 @@ public class AppDbContext : DbContext
         b.Entity<CalendarInvite>().Property(i => i.Role).HasConversion<string>();
 
         b.Entity<UserProfile>().HasKey(p => p.UserId);
-        b.Entity<UserProfile>().Property(p => p.DisplayName).HasMaxLength(50);
+        // Usernames: up to 30 characters, and no two people can have the same one
+        b.Entity<UserProfile>().Property(p => p.Username).HasMaxLength(30);
+        b.Entity<UserProfile>().HasIndex(p => p.Username).IsUnique();
 
         // Event chat: deleting an event deletes its messages; messages load newest-first per event
         b.Entity<EventMessage>().HasOne<Event>().WithMany()

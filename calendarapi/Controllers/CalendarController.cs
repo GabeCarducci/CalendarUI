@@ -47,6 +47,25 @@ public class CalendarController : ControllerBase
         return Ok(rows.Select(r => EventResponseDto.From(r.Event, r.AttendeeIds)));
     }
 
+    // GET /api/calendar/event/{id}/attendees   
+    [HttpGet("event/{id:guid}/attendees")]
+    public async Task<IActionResult> GetAttendees(Guid id)
+    {
+        var ev = await _db.Events.FindAsync(id);
+        if (ev == null) return NotFound();
+        if (!await IsMemberAsync(ev.CalendarId)) return Forbid();
+
+        var attendees = await (
+                from a in _db.EventAttendees
+                where a.EventId == id
+                join p in _db.UserProfiles on a.UserId equals p.UserId into profiles
+                from p in profiles.DefaultIfEmpty()
+                orderby a.JoinedAt
+                select new { a.UserId, a.JoinedAt, Username = p != null ? p.Username : null })
+            .ToListAsync();
+        return Ok(attendees);
+    }
+
     // POST /api/calendar/event   (Owners and Editors only)
     [HttpPost("event")]
     public async Task<IActionResult> CreateEvent([FromBody] CreateEventDto dto)
@@ -86,7 +105,7 @@ public class CalendarController : ControllerBase
 
         var ev = await _db.Events.FindAsync(id);
         if (ev == null) return NotFound();
-        if (!await IsMemberAsync(ev.CalendarId, requireEditorOrOwner: true)) return Forbid();
+        if (!await CanChangeEventAsync(ev)) return Forbid();
         if (!TryNormalizeColor(dto.Color, out var color))
             return BadRequest(new { error = "color must look like #2563eb" });
 
@@ -111,7 +130,7 @@ public class CalendarController : ControllerBase
     {
         var ev = await _db.Events.FindAsync(id);
         if (ev == null) return NotFound();
-        if (!await IsMemberAsync(ev.CalendarId, requireEditorOrOwner: true)) return Forbid();
+        if (!await CanChangeEventAsync(ev)) return Forbid();
 
         _db.Events.Remove(ev);
         await _db.SaveChangesAsync();
@@ -120,7 +139,7 @@ public class CalendarController : ControllerBase
         return Ok(new { success = true });
     }
 
-    // POST /api/calendar/event/{id}/attend   -> "I'm going"   (any member)
+    // POST /api/calendar/event/{id}/attend   
     [HttpPost("event/{id:guid}/attend")]
     public async Task<IActionResult> Attend(Guid id)
     {
@@ -139,7 +158,7 @@ public class CalendarController : ControllerBase
         return Ok(result);
     }
 
-    // DELETE /api/calendar/event/{id}/attend   -> "I'm not going anymore"
+    // DELETE /api/calendar/event/{id}/attend   
     [HttpDelete("event/{id:guid}/attend")]
     public async Task<IActionResult> Leave(Guid id)
     {
@@ -159,20 +178,24 @@ public class CalendarController : ControllerBase
         return Ok(result);
     }
 
-    // GET /api/calendar/event/{id}/attendees   -> who's going, with emails
-    [HttpGet("event/{id:guid}/attendees")]
-    public async Task<IActionResult> GetAttendees(Guid id)
+    // DELETE /api/calendar/event/{id}/attendees/{userId}   
+    // (the Owner, or the Editor who created the event)
+    [HttpDelete("event/{id:guid}/attendees/{userId}")]
+    public async Task<IActionResult> RemoveAttendee(Guid id, string userId)
     {
         var ev = await _db.Events.FindAsync(id);
         if (ev == null) return NotFound();
-        if (!await IsMemberAsync(ev.CalendarId)) return Forbid();
+        if (!await CanChangeEventAsync(ev)) return Forbid();
 
-        var attendees = await _db.EventAttendees
-            .Where(a => a.EventId == id)
-            .OrderBy(a => a.JoinedAt)
-            .Select(a => new { a.UserId, a.Email, a.JoinedAt })
-            .ToListAsync();
-        return Ok(attendees);
+        var row = await _db.EventAttendees.FindAsync(id, userId);
+        if (row == null) return NotFound();
+
+        _db.EventAttendees.Remove(row);
+        await _db.SaveChangesAsync();
+
+        var result = await ToDto(ev);
+        await _hub.Clients.Group(CalendarHub.GroupName(ev.CalendarId)).SendAsync("eventUpdated", result);
+        return Ok(result);
     }
 
     private async Task<EventResponseDto> ToDto(Event ev)
@@ -182,6 +205,17 @@ public class CalendarController : ControllerBase
             .Select(a => a.UserId)
             .ToListAsync();
         return EventResponseDto.From(ev, attendeeIds);
+    }
+
+    private async Task<bool> CanChangeEventAsync(Event ev)
+    {
+        var role = await _db.CalendarMembers
+            .Where(m => m.CalendarId == ev.CalendarId && m.UserId == UserId)
+            .Select(m => (CalendarRole?)m.Role)
+            .FirstOrDefaultAsync();
+
+        return role == CalendarRole.Owner
+            || (role == CalendarRole.Editor && ev.CreatedByUserId == UserId);
     }
 
     private async Task<bool> IsMemberAsync(Guid calendarId, bool requireEditorOrOwner = false)

@@ -5,6 +5,7 @@ import { Scheduler } from 'calendarkit-pro';
 import type { CalendarEvent, ViewType } from 'calendarkit-pro';
 import EventDialog from './EventDialog';
 import EventChat from './EventChat';
+import EventAttendees from './EventAttendees';
 import UpcomingEvents from './UpcomingEvents';
 import { useCalendarHub } from '../hooks/useCalendarHub';
 import { API_URL } from '../lib/api';
@@ -67,9 +68,16 @@ function CloseImmediately({ onClose }: { onClose: () => void }) {
   return null;
 }
 
-export default function Calendar({ calendarId, canEdit = false }: { calendarId: string; canEdit?: boolean }) {
+// onRemoved = called if the Owner removes me from this calendar while I'm looking at it
+export default function Calendar({ calendarId, role, onRemoved }: {
+  calendarId: string; role: string | null; onRemoved?: () => void;
+}) {
   const { getAccessTokenSilently, user } = useAuth0();
   const userId = user?.sub;
+  const canCreate = role === 'Owner' || role === 'Editor';
+  const canChange = (event: CalendarEvent | undefined) =>
+    !!event && (role === 'Owner' ||
+      (role === 'Editor' && (event as CalendarEvent & { createdBy?: string }).createdBy === userId));
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [attendancePending, setAttendancePending] = useState(false);
   const [eventStatus, setEventStatus] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -122,6 +130,7 @@ export default function Calendar({ calendarId, canEdit = false }: { calendarId: 
     onEventDeleted: id => setEvents(prev => prev.filter(x => x.id !== id)),
     onMessageCreated: m => chatBus.dispatchEvent(new CustomEvent('messageCreated', { detail: m })),
     onMessageDeleted: m => chatBus.dispatchEvent(new CustomEvent('messageDeleted', { detail: m })),
+    onRemovedFromCalendar: id => { if (id === calendarId) onRemoved?.(); },
   });
 
   const body = (e: Partial<CalendarEvent>) => JSON.stringify({
@@ -137,7 +146,7 @@ export default function Calendar({ calendarId, canEdit = false }: { calendarId: 
   });
 
   async function createEvent(e: Partial<CalendarEvent>) {
-    if (!canEdit || !e.title?.trim() || !e.start || !e.end) return;
+   if (!canCreate || !e.title?.trim() || !e.start || !e.end) return;
     try {
       const saved: EventDto = await api('/event', { method: 'POST', body: body(e) });
       upsert(fromDto(saved));
@@ -145,8 +154,8 @@ export default function Calendar({ calendarId, canEdit = false }: { calendarId: 
   }
 
   async function updateEvent(changed: CalendarEvent) {
-    if (!canEdit) return;   // Viewers can't move, resize or edit events
     const id = seriesIdOf(changed.id);
+    if (!canChange(events.find(x => x.id === id))) return;   // not allowed to move, resize or edit this event
     let e = changed;
 
     if (String(changed.id) !== id) {
@@ -168,8 +177,8 @@ export default function Calendar({ calendarId, canEdit = false }: { calendarId: 
   }
 
   async function deleteEvent(id: string) {
-    if (!canEdit) return;
     const seriesId = seriesIdOf(id);   // deleting any repeat deletes the whole series
+    if (!canChange(events.find(x => x.id === seriesId))) return;
     setEvents(prev => prev.filter(x => x.id !== seriesId));
     await api(`/event/${seriesId}`, { method: 'DELETE' }).catch(console.error);
   }
@@ -206,7 +215,7 @@ export default function Calendar({ calendarId, canEdit = false }: { calendarId: 
             if (!isOpen) return null;
             const event = events.find(item => item.id === seriesIdOf(props.event?.id));
             // Viewers can't create events, so an empty-slot click closes the form again
-            if (!event && !canEdit) return <CloseImmediately onClose={props.onClose} />;
+            if (!event && !canCreate) return <CloseImmediately onClose={props.onClose} />;
             const attendeeIds: string[] = event?.attendeeIds ?? [];
             return (
               <EventDialog
@@ -216,9 +225,19 @@ export default function Calendar({ calendarId, canEdit = false }: { calendarId: 
                   pending: attendancePending,
                   onChange: going => changeAttendance(event.id, going),
                 } : undefined}
-                canEdit={canEdit}
+                canEdit={event ? canChange(event) : canCreate}
+                attendees={event ? (
+                  <EventAttendees
+                    eventId={String(event.id)}
+                    attendeeIds={attendeeIds}
+                    userId={userId}
+                    canRemove={canChange(event)}
+                    api={api}
+                    onUpdated={updated => upsert(fromDto(updated as EventDto))}
+                  />
+                ) : undefined}
                 chat={event ? (
-                  <EventChat key={event.id} eventId={String(event.id)} userId={userId} api={api} bus={chatBus} />
+                  <EventChat key={event.id} eventId={String(event.id)} userId={userId} api={api} bus={chatBus} canModerate={role === 'Owner'} />
                 ) : undefined}
               />
             );

@@ -6,7 +6,13 @@ import CalendarMembers from './CalendarMembers';
 import './CalendarPicker.css';
 
 type CalendarSummary = { id: string; name: string; role: string };
-type InviteInfo = { code: string; inviteeEmail: string | null };
+type InviteInfo = { code: string; inviteeEmail: string | null; role: string; emailSent: boolean | null };
+type InviteRole = 'Viewer' | 'Editor';
+
+const inviteRoles: { value: InviteRole; label: string; description: string }[] = [
+    { value: 'Viewer', label: 'Viewer', description: 'Can see events, join them and chat.' },
+    { value: 'Editor', label: 'Editor', description: 'Can also add events and change the events they create.' },
+];
 type Props = {
     selectedId: string | null;
     onSelect: (id: string | null) => void;
@@ -70,10 +76,12 @@ export default function CalendarPicker({ selectedId, onSelect, onRoleChange }: P
     const [leaveTarget, setLeaveTarget] = useState<CalendarSummary | null>(null);
     const [notice, setNotice] = useState('');
     const [latestInvite, setLatestInvite] = useState<(InviteInfo & { calendarId: string | null }) | null>(null);
+    const [inviteRole, setInviteRole] = useState<InviteRole>('Viewer');
     const selectedCalendar = calendars.find(calendar => calendar.id === selectedId);
     const isOwner = selectedCalendar?.role === 'Owner';
     const canInvite = isOwner || selectedCalendar?.role === 'Editor';
     const selectedRole = selectedCalendar?.role ?? null;
+
 
     useEffect(() => {
         onRoleChange?.(selectedRole);
@@ -106,9 +114,12 @@ export default function CalendarPicker({ selectedId, onSelect, onRoleChange }: P
         return () => controller.abort();
     }, [getAccessTokenSilently]);
 
+    // Pick the first (most recently used) calendar when none is picked,
+    // or when the one asked for isn't mine anymore (e.g. an old link after being removed)
     useEffect(() => {
-        if (!selectedId && calendars.length > 0) onSelect(calendars[0].id);
-    }, [calendars, onSelect, selectedId]);
+        if (loading || calendars.length === 0) return;
+        if (!selectedId || !calendars.some(calendar => calendar.id === selectedId)) onSelect(calendars[0].id);
+    }, [calendars, loading, onSelect, selectedId]);
 
     function resetPanel(nextAction: Panel | null) {
         setAction(nextAction);
@@ -214,7 +225,7 @@ export default function CalendarPicker({ selectedId, onSelect, onRoleChange }: P
         }
         if (action === 'invite') {
             path += `/${selectedId}/invites`;
-            body = { email: value || null, role: 'Editor' };
+            body = { email: value || null, role: inviteRole };
         }
         if (action === 'rename') path += `/${selectedId}`;
 
@@ -227,7 +238,16 @@ export default function CalendarPicker({ selectedId, onSelect, onRoleChange }: P
                 headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
             });
-            if (!response.ok) throw new Error(activeAction.error);
+            if (!response.ok) {
+                // Show the API's own message when it explains the problem
+                // (e.g. "This invite was sent to …" or "That doesn't look like an email address")
+                let message = activeAction.error;
+                try {
+                    const data = await response.json();
+                    if (typeof data?.error === 'string' && (action === 'join' || action === 'invite')) message = data.error;
+                } catch { /* no JSON body; keep the general message */ }
+                throw new Error(message);
+            }
 
             if (action === 'invite') {
                 const invite: InviteInfo = await response.json();
@@ -245,8 +265,8 @@ export default function CalendarPicker({ selectedId, onSelect, onRoleChange }: P
                 }
                 closePanel();
             }
-        } catch {
-            setError(activeAction.error);
+        } catch (err) {
+            setError(err instanceof Error && err.message ? err.message : activeAction.error);
         } finally {
             setSubmitting(false);
         }
@@ -392,6 +412,7 @@ export default function CalendarPicker({ selectedId, onSelect, onRoleChange }: P
                     calendarId={selectedCalendar.id}
                     calendarName={selectedCalendar.name}
                     onClose={closePanel}
+                    canManageRoles={isOwner}
                 />
             )}
             {deleteTarget && (
@@ -473,13 +494,43 @@ export default function CalendarPicker({ selectedId, onSelect, onRoleChange }: P
                             {submitting ? 'Working…' : activeAction.submit}
                         </button>
                     </div>
+                    {action === 'invite' && (
+                        <fieldset className="calendar-picker-roles" disabled={submitting}>
+                            <legend>Invite as</legend>
+                            <div className="calendar-picker-role-options">
+                            {inviteRoles.map(option => (
+                                <label key={option.value} className="calendar-picker-role-option">
+                                    <input
+                                        type="radio"
+                                        name="role"
+                                        value={option.value}
+                                        checked={inviteRole === option.value}
+                                        onChange={() => setInviteRole(option.value)}
+                                    />
+                                    <span>
+                                        <strong>{option.label}</strong>
+                                        <span className="calendar-picker-role-description">{option.description}</span>
+                                    </span>
+                                </label>
+                            ))}
+                            </div>
+                        </fieldset>
+                    )}
                     {error && <p className="calendar-picker-error" role="alert">{error}</p>}
                     <div role="status">
                         {action === 'invite' && inviteInfo && (
-                            <p className="calendar-picker-code">
-                                Share code <strong>{inviteInfo.code}</strong>
-                                {inviteInfo.inviteeEmail ? ` (for ${inviteInfo.inviteeEmail})` : ' (anyone with the code)'}
-                            </p>
+                            <div className="calendar-picker-code">
+                                <p>
+                                    Invite code <strong>{inviteInfo.code}</strong> ({inviteInfo.role})
+                                    {inviteInfo.inviteeEmail ? ` for ${inviteInfo.inviteeEmail}` : ', for anyone with the code'}
+                                </p>
+                                {inviteInfo.emailSent === true && <p>We emailed the code to {inviteInfo.inviteeEmail}.</p>}
+                                {inviteInfo.emailSent === false && (
+                                    <p className="calendar-picker-warning">
+                                        We couldn’t send the email. Share the code with {inviteInfo.inviteeEmail} yourself.
+                                    </p>
+                                )}
+                            </div>
                         )}
                     </div>
                 </form>

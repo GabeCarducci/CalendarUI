@@ -11,6 +11,8 @@ type Props = Omit<Parameters<NonNullable<CalendarProps['renderEventForm']>>[0], 
     };
     // The event's chat; only given for events that are already saved
     chat?: ReactNode;
+    // The "Who's going" list; only given for events that are already saved
+    attendees?: ReactNode;
     // Owners and Editors can edit events; everyone else only sees the chat tab
     canEdit?: boolean;
 };
@@ -50,7 +52,7 @@ function localDateTime(date: Date) {
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-export default function EventDialog({ event, initialDate, onSave, onDelete, onClose, attendance, chat, canEdit = true }: Props) {
+export default function EventDialog({ event, initialDate, onSave, onDelete, onClose, attendance, chat, attendees, canEdit = true }: Props) {
     const dialog = useRef<HTMLDialogElement>(null);
     const headingId = useId();
     const [title, setTitle] = useState(event?.title ?? '');
@@ -199,6 +201,7 @@ export default function EventDialog({ event, initialDate, onSave, onDelete, onCl
                             </dl>
                         )}
                         {attendanceBox}
+                        {attendees}
                         {chat}
                     </div>
                 )}

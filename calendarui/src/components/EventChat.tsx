@@ -20,6 +20,7 @@ type Props = {
     api: (path: string, init?: RequestInit) => Promise<unknown>;
     // Live messages arrive here from the calendar's SignalR connection
     bus: EventTarget;
+    canModerate?: boolean;
 };
 
 const MAX_LENGTH = 2000;
@@ -28,7 +29,7 @@ const timeFormat = new Intl.DateTimeFormat(undefined, {
     month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
 });
 
-export default function EventChat({ eventId, userId, api, bus }: Props) {
+export default function EventChat({ eventId, userId, api, bus, canModerate = false }: Props) {
     const id = useId();
     const list = useRef<HTMLOListElement>(null);
     const stickToBottom = useRef(true);
@@ -199,7 +200,7 @@ export default function EventChat({ eventId, userId, api, bus }: Props) {
                                             <time dateTime={message.createdAt}>{timeFormat.format(new Date(message.createdAt))}</time>
                                         </div>
                                         <p className="event-chat-body">{message.body}</p>
-                                        {mine && (
+                                        {(mine || canModerate) && (
                                             confirmDeleteId === message.id ? (
                                                 <div className="event-chat-confirm">
                                                     <button type="button" onClick={() => setConfirmDeleteId(null)}>Keep</button>

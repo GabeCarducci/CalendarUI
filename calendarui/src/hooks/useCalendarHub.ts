@@ -8,6 +8,7 @@ type Handlers = {
     onEventDeleted?: (id: string) => void;
     onMessageCreated?: (message: unknown) => void;
     onMessageDeleted?: (message: { id: string; eventId: string }) => void;
+    onRemovedFromCalendar?: (calendarId: string) => void;
 };
 
 export function useCalendarHub(
@@ -36,6 +37,7 @@ export function useCalendarHub(
         connection.on('eventDeleted', (id) => handlersRef.current.onEventDeleted?.(id));
         connection.on('messageCreated', (m) => handlersRef.current.onMessageCreated?.(m));
         connection.on('messageDeleted', (m) => handlersRef.current.onMessageDeleted?.(m));
+        connection.on('removedFromCalendar', (id) => handlersRef.current.onRemovedFromCalendar?.(id));
         connection.onreconnected(() => { connection.invoke('JoinCalendar', calendarId).catch(console.error); });
 
         connection.start()

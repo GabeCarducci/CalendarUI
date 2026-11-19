@@ -4,8 +4,11 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { API_URL } from '../lib/api';
 
-const maxNameLength = 50;
-type AccountProfile = { displayName: string; email: string | null };
+// Same rules as the API (Services/UsernameRules.cs), checked here too so mistakes show up right away
+const minUsernameLength = 3;
+const maxUsernameLength = 30;
+const usernamePattern = /^[a-z0-9](?:[a-z0-9._]*[a-z0-9])?$/;
+type AccountProfile = { username: string; email: string | null };
 
 export default function AccountDropdown({ user }: { user?: User }) {
   const { getAccessTokenSilently, logout } = useAuth0();
@@ -25,7 +28,7 @@ export default function AccountDropdown({ user }: { user?: User }) {
   const [deleting, setDeleting] = useState(false);
   const [deleted, setDeleted] = useState(false);
   const [deleteError, setDeleteError] = useState('');
-  const name = profile?.displayName || user?.name || user?.nickname || 'Account';
+  const name = profile?.username || user?.nickname || user?.name || 'Account';
   const loadingProfile = Boolean(userId && !profile && !loadFailed);
 
   useEffect(() => {
@@ -74,14 +77,18 @@ export default function AccountDropdown({ user }: { user?: User }) {
     };
   }, [isOpen]);
 
-  async function saveDisplayName(event: FormEvent<HTMLFormElement>) {
+  async function saveUsername(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!userId || loadingProfile || saving) return;
 
-    const displayName = (draftName ?? name).trim();
+    const username = (draftName ?? name).trim().replace(/^@/, '').toLowerCase();
     setSaved(false);
-    if (!displayName || displayName.length > maxNameLength) {
-      setSaveError(`Enter a display name between 1 and ${maxNameLength} characters.`);
+    if (username.length < minUsernameLength || username.length > maxUsernameLength) {
+      setSaveError(`Usernames must be ${minUsernameLength} to ${maxUsernameLength} characters long.`);
+      return;
+    }
+    if (!usernamePattern.test(username)) {
+      setSaveError('Use only lowercase letters, numbers, dots and underscores, starting and ending with a letter or number.');
       return;
     }
 
@@ -89,19 +96,27 @@ export default function AccountDropdown({ user }: { user?: User }) {
     setSaveError('');
     try {
       const token = await getAccessTokenSilently();
-      const response = await fetch(`${API_URL}/api/account/name`, {
+      const response = await fetch(`${API_URL}/api/account/username`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ displayName }),
+        body: JSON.stringify({ username }),
       });
-      if (!response.ok) throw new Error('Display name request failed');
+      if (!response.ok) {
+        // e.g. "That username is taken." (409) or a rule the API checked (400)
+        let message = 'Could not save your username. Try again.';
+        try {
+          const data = await response.json();
+          if (typeof data?.error === 'string') message = data.error;
+        } catch { /* no message in the reply */ }
+        throw new Error(message);
+      }
       const account: AccountProfile = await response.json();
       setProfile(account);
       setLoadFailed(false);
       setDraftName(null);
       setSaved(true);
-    } catch {
-      setSaveError('Could not save your display name. Try again.');
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Could not save your username. Try again.');
     } finally {
       setSaving(false);
     }
@@ -175,17 +190,22 @@ export default function AccountDropdown({ user }: { user?: User }) {
           <div id={`${menuId}-profile`} hidden={!showProfile} className="px-3 pb-3">
             <p className="break-words py-2 text-zinc-300">{user?.email || profile?.email || 'No email available'}</p>
             {userId && (
-              <form className="grid gap-2" onSubmit={saveDisplayName}>
-                <label htmlFor={`${menuId}-name`} className="font-medium">Display name</label>
+              <form className="grid gap-2" onSubmit={saveUsername}>
+                <label htmlFor={`${menuId}-name`} className="font-medium">Username</label>
                 <input
                   id={`${menuId}-name`}
+                  aria-describedby={`${menuId}-name-hint`}
                   value={draftName ?? name}
                   onChange={event => {
-                    setDraftName(event.target.value);
+                    // Usernames are lowercase with no spaces, so tidy them up while typing
+                    setDraftName(event.target.value.toLowerCase().replace(/\s/g, ''));
                     setSaveError('');
                     setSaved(false);
                   }}
-                  maxLength={maxNameLength}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  maxLength={maxUsernameLength}
                   disabled={loadingProfile}
                   readOnly={saving}
                   required
@@ -198,9 +218,12 @@ export default function AccountDropdown({ user }: { user?: User }) {
                 >
                   {saving ? 'Saving…' : 'Save'}
                 </button>
+                <p id={`${menuId}-name-hint`} className="text-sm text-zinc-300">
+                  3–30 characters: lowercase letters, numbers, dots and underscores. Everyone in your calendars sees it.
+                </p>
                 {saveError && <p role="alert" className="text-red-200">{saveError}</p>}
                 <p role="status" className="text-zinc-200 empty:hidden">
-                  {loadingProfile ? 'Loading profile…' : loadFailed ? 'Could not load your saved profile.' : saved ? 'Display name saved.' : ''}
+                  {loadingProfile ? 'Loading profile…' : loadFailed ? 'Could not load your saved profile.' : saved ? 'Username saved.' : ''}
                 </p>
               </form>
             )}
