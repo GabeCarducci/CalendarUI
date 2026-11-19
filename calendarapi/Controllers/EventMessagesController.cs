@@ -50,7 +50,7 @@ public class EventMessagesController : ControllerBase
                 join p in _db.UserProfiles on m.UserId equals p.UserId into profiles
                 from p in profiles.DefaultIfEmpty()
                 orderby m.CreatedAt descending
-                select new { Message = m, Name = p != null ? p.DisplayName : null })
+                select new { Message = m, Name = p != null ? p.Username : null })
             .Take(pageSize + 1)
             .ToListAsync();
 
@@ -83,7 +83,7 @@ public class EventMessagesController : ControllerBase
 
         var name = await _db.UserProfiles
             .Where(p => p.UserId == message.UserId)
-            .Select(p => p.DisplayName)
+            .Select(p => p.Username)
             .FirstOrDefaultAsync();
         var result = ToDto(message, name);
 

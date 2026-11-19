@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import './EventAttendees.css';
 
-type Attendee = { userId: string; displayName: string | null };
+type Attendee = { userId: string; username: string | null };
 
 type Props = {
     eventId: string;
@@ -75,7 +75,7 @@ export default function EventAttendees({ eventId, attendeeIds, userId, canRemove
                 <ul className="event-attendees-list">
                     {attendees.map(attendee => {
                         const isMe = attendee.userId === userId;
-                        const name = isMe ? 'You' : (attendee.displayName?.trim() || 'Calendar member');
+                        const name = isMe ? 'You' : (attendee.username?.trim() || 'Calendar member');
                         return (
                             <li key={attendee.userId}>
                                 <span className="event-attendees-name">{name}</span>

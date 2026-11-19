@@ -55,10 +55,13 @@ public class CalendarController : ControllerBase
         if (ev == null) return NotFound();
         if (!await IsMemberAsync(ev.CalendarId)) return Forbid();
 
-        var attendees = await _db.EventAttendees
-            .Where(a => a.EventId == id)
-            .OrderBy(a => a.JoinedAt)
-            .Select(a => new { a.UserId, a.Email, a.JoinedAt })
+        var attendees = await (
+                from a in _db.EventAttendees
+                where a.EventId == id
+                join p in _db.UserProfiles on a.UserId equals p.UserId into profiles
+                from p in profiles.DefaultIfEmpty()
+                orderby a.JoinedAt
+                select new { a.UserId, a.JoinedAt, Username = p != null ? p.Username : null })
             .ToListAsync();
         return Ok(attendees);
     }
