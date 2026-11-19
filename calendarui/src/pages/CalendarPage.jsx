@@ -93,7 +93,7 @@ export default function CalendarPage({ initialCalendarId = null, onHome }) {
             onHome();
           }}
         >
-          <img className="calendar-page-logo" src="/logo.png" alt="" />
+          <img className="calendar-page-logo" src="https://i.postimg.cc/1tbn8tT4/New-Calendar-Logo.png" alt="" />
           <span>Community Calendar</span>
         </a>
       </h1>
