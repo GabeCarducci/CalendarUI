@@ -48,10 +48,12 @@ function LandingPage() {
   return (
     <>
       <header className="navbar">
-        <a className="logo" href="/">
-          <img className="logo-image" src="https://i.postimg.cc/Dwx9Qbc8/Calendar-(1).png" alt="" />
-          <span>Community Calendar</span>
-        </a>
+        {isAuthenticated && (
+          <a className="logo" href="/">
+            <img className="logo-image" src="https://i.postimg.cc/1tbn8tT4/New-Calendar-Logo.png" alt="" />
+            <span>Community Calendar</span>
+          </a>
+        )}
         {isAuthenticated && (
           <div className="navbar-account">
             <AccountDropdown key={user?.sub} user={user} />
@@ -68,6 +70,9 @@ function LandingPage() {
 
       <main className="landing-main">
         <section className="hero">
+        {!isAuthenticated && (
+          <img className="hero-logo" src="https://i.postimg.cc/Dwx9Qbc8/Calendar-(1).png" alt="Community Calendar" />
+        )}
           <h1>Your community.<br />All in one calendar.</h1>
           {!isAuthenticated && (
             <>
